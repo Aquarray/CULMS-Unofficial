@@ -171,30 +171,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
                   // App Emblem & Branding
                   Center(
                     child: Container(
-                      height: 72,
-                      width: 72,
+                      height: 76,
+                      width: 76,
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            theme.primaryColor,
-                            theme.primaryColor.withOpacity(0.8),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
+                        color: isDark ? const Color(0xFF1E293B) : Colors.white,
                         borderRadius: BorderRadius.circular(22),
                         boxShadow: [
                           BoxShadow(
-                            color: theme.primaryColor.withOpacity(0.3),
+                            color: Colors.black.withOpacity(0.08),
                             blurRadius: 16,
                             offset: const Offset(0, 8),
                           ),
                         ],
                       ),
-                      child: const Icon(
-                        Icons.school_rounded,
-                        color: Colors.white,
-                        size: 38,
+                      padding: const EdgeInsets.all(12),
+                      child: Image.asset(
+                        'assets/images/app_icon_red_glyph.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Icon(
+                          Icons.school_rounded,
+                          color: theme.primaryColor,
+                          size: 38,
+                        ),
                       ),
                     ),
                   ),

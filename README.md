@@ -1,506 +1,298 @@
-Flutter LMS Mobile App - Technical Plan
-
-1. Project Overview
-
-App Objective: Redesign of the LMS portal for mobile users.
-
-Framework: Flutter (chosen for highly efficient performance and superior UI capabilities).
-
-Core Challenge: Direct LMS login is restricted. Authentication requires routing through a custom Vercel serverless backend to handle university SSO, retrieve session tokens, and bypass complex auto-login barriers.
-
-2. Technical Authentication Flow (SSO)
-
-API Configuration
-
-Gateway Endpoint: POST https://lmssso.vercel.app/api/sso
-
-Headers:
-
-Content-Type: application/json
-
-Authorization: Bearer <API_TOKEN>
-
-Step 2.1: Initial Login Payload
-
-The Flutter app will send the user's credentials to the Vercel gateway.
-
-{
-  "uid": "<SAMPLEUID>", 
-  "password": "<SAMPLEPAS>"
-}
-
-
-
-Step 2.2: State & Response Handling
-
-State 0: Processing & Delay Handling
-
-Display a loading state: "Connecting to Cloud SSO Gateway..."
-
-Important Constraint: The login process may take time. Implement a 5-second wait/delay handling mechanism to gracefully accommodate the gateway's processing time without timing out the UI.
-
-State 1: Direct Success (Auto-verified)
-
-Condition: HTTP Status OK & JSON response contains "success": true and "lmsLoginUrl": "<URL>".
-
-Action:
-
-Update UI state: "LMS SSO Authorization Successful! Redirecting..."
-
-Navigate the app (likely via a headless WebView or HTTP client) to the provided Moodle autologin URL.
-
-Extract and store the resulting Moodle session cookies (e.g., MoodleSession) and the sesskey for all subsequent data fetching.
-
-State 2: Manual Captcha Required (OCR Failure)
-
-Condition: JSON response contains "success": false and "requireManualCaptcha": true.
-
-Action: Pause login, store "sessionToken", and show "captchaImage" (base64) to the user for manual entry.
-
-State 3: Captcha Submission
-
-Send follow-up POST with uid, password, captcha, and sessionToken. Handle success/failure as above.
-
-State 4: Explicit Failure
-
-Handle network or credential errors by showing an error dialog.
-
-3. Cookie & Session Management
-
-Implement a Cookie Manager (e.g., using dio_cookie_manager).
-
-Captured Moodle session cookies and the extracted sesskey MUST be injected into the headers/URLs of all subsequent API calls to fetch Moodle data.
-
-4. UI Navigation & Layout
-
-The application will utilize a custom Bottom Navigation Bar for core routing:
-
-Left Icon: MyCourses
-
-Center Action: Dashboard (Floating Action Button style, prominent in the center)
-
-Right Icon: Settings
-
-5. Dashboard Data Fetching (Moodle AJAX)
-
-Once authenticated, the app will hit the standard Moodle AJAX service endpoints. Note: The sesskey extracted during the login phase must be appended to the query parameters.
-
-5.1 Fetching Enrolled Courses
-
-Endpoint: POST https://lms.cuchd.in/lib/ajax/service.php?sesskey=<sesskey>&info=core_course_get_enrolled_courses_by_timeline_classification
-
-Headers: Includes Moodle Session cookies.
-
-Payload:
-
-[
-    {
-        "index": 0,
-        "methodname": "core_course_get_enrolled_courses_by_timeline_classification",
-        "args": {
-            "offset": 0,
-            "limit": 30,
-            "classification": "all",
-            "sort": "fullname",
-            "customfieldname": "",
-            "customfieldvalue": "",
-            "requiredfields": [
-                "id",
-                "fullname",
-                "shortname",
-                "showcoursecategory",
-                "visible",
-                "enddate",
-                "courseimage", 
-                "progress" 
-            ]
-        }
-    }
-]
-
-
-
-(Note: Additional helpful fields like courseimage and progress can be appended to requiredfields if supported by the server).
-
-5.2 Fetching Notifications / Calendar Events
-
-Endpoint: POST https://lms.cuchd.in/lib/ajax/service.php?sesskey=<sesskey>&info=core_calendar_get_action_events_by_timesort
-
-Headers: Includes Moodle Session cookies.
-
-Payload:
-
-[
-    {
-        "index": 0,
-        "methodname": "core_calendar_get_action_events_by_timesort",
-        "args": {
-            "limitnum": 10,
-            "timesortfrom": 1790620200,
-            "timesortto": 1791225000,
-            "limittononsuspendedevents": true
-        }
-    }
-]
-
-
-
-(Note: The app will need a helper function to dynamically generate timesortfrom and timesortto as UNIX timestamps based on the current date).
-
-6. Data Modeling Strategy (Pre-development)
-
-Since the exact JSON response structures for the Moodle AJAX calls are currently unknown, the development process will follow this strict sequence before creating Dart models:
-
-Test Authentication: Run a test script using a valid student credential to pass the SSO flow and capture a valid MoodleSession cookie and sesskey.
-
-cURL Response Mapping:
-Construct curl requests in the terminal using the captured cookie and sesskey to hit both the courses and notifications endpoints.
-Example:
-curl -X POST "https://lms.cuchd.in/lib/ajax/service.php?sesskey=YOUR_SESSKEY&info=..." -H "Cookie: MoodleSession=YOUR_COOKIE" -d '[...PAYLOAD...]'
-
-Model Generation: Analyze the raw JSON output from curl. Use this payload to generate robust Dart data classes (e.g., using freezed and json_serializable) to safely parse the LMS responses in the app.
-
-
-
-
-### Content Analysis & Dynamic Extraction Logic
-
-Based on the provided HTML files, the LMS delivers course content primarily in two structural formats.
-
-**1. Single Document Viewer (Resource View)**
-This layout is used for individual files like presentations or PDFs.
-
-* **Title:** Located inside `<div class="page-header-headings"><h1 class="h2 mb-0">`.
-
-
-* **Viewer URL:** Embedded within an `<iframe>` with the ID `resourceobject`. The `src` attribute contains the `pdf.php` URL you identified.
-
-
-* **Download URL:** Attached to an anchor tag with the classes `btn btn-primary` and a `download` attribute.
-
-
-
-**2. Folder/Directory Explorer (Folder View)**
-This layout is used for a collection of grouped files.
-
-* **Title:** Also located inside `<div class="page-header-headings"><h1 class="h2 mb-0">`.
-
-
-* **File List:** Contained within a nested `<ul>` structure under `<div id="folder_tree0" class="filemanager">`.
-
-
-* **Individual Files:** Defined by `<span class="fp-filename">` wrapping an `<a>` tag containing the direct download URL (`pluginfile.php`) and the file name.
-
-
-* **File Types:** Indicated by the `src` of the `<img>` tag within the adjacent `<span class="fp-icon">` (e.g., `.../f/document` for Word, `.../f/powerpoint` for PPT).
-
-
-
-### Dynamic Extraction Script
-
-To make the extraction dynamic across multiple pages on this LMS, you can use the following JavaScript in the browser console or within a scraping tool (like Puppeteer/Cheerio) to automatically detect the page type and build a standardized JSON object.
-
-```javascript
-function extractLMSContent() {
-    const contentData = {
-        pageTitle: document.querySelector('.page-header-headings h1')?.innerText || "Unknown Title",
-        type: null,
-        items: []
-    };
-
-    // Check for Single Document Viewer (PPT/PDF)
-    const viewerIframe = document.querySelector('iframe#resourceobject');
-    if (viewerIframe) {
-        contentData.type = 'single_document';
-        contentData.items.push({
-            name: document.querySelector('.local-officeviewer-filename')?.innerText || contentData.pageTitle,
-            viewerUrl: viewerIframe.src,
-            downloadUrl: document.querySelector('a.btn-primary[download]')?.href
-        });
-        return contentData;
-    }
-
-    // Check for Folder View
-    const folderTree = document.querySelector('#folder_tree0');
-    if (folderTree) {
-        contentData.type = 'folder_directory';
-        const fileNodes = folderTree.querySelectorAll('.fp-filename a');
-        
-        fileNodes.forEach(node => {
-            // Traverse up to find the associated icon
-            const iconNode = node.closest('.fp-filename-icon')?.querySelector('.fp-icon img');
-            let fileType = 'unknown';
-            if (iconNode && iconNode.src.includes('/f/document')) fileType = 'docx';
-            if (iconNode && iconNode.src.includes('/f/powerpoint')) fileType = 'pptx';
-            if (iconNode && iconNode.src.includes('/f/pdf')) fileType = 'pdf';
-
-            contentData.items.push({
-                name: node.innerText,
-                downloadUrl: node.href,
-                type: fileType
-            });
-        });
-        return contentData;
-    }
-
-    return contentData;
-}
-
-```
-
-### Extracted Data from Provided Sources
-
-Running the logic above on your provided files yields:
-
-From PPT Type:
-
-* **Page Title:** Lecture 8,9 PPTX
-
-
-* **Viewer URL:** `[https://lms.cuchd.in/local/officeviewer/pdf.php?id=3435104&h=bd9cf54c3c34e05c9683542a029b650bebae5826](https://lms.cuchd.in/local/officeviewer/pdf.php?id=3435104&h=bd9cf54c3c34e05c9683542a029b650bebae5826)`
-
-* **Download URL:** `[https://lms.cuchd.in/pluginfile.php/4726581/mod_resource/content/1/Lecture%208%2C9.pptx?forcedownload=1](https://lms.cuchd.in/pluginfile.php/4726581/mod_resource/content/1/Lecture%208%2C9.pptx?forcedownload=1)`
-
-
-From Folder Type:
-
-* **Page Title:** Course Contents
-
-
-* **Files:**
-* *Lecture_40_42_Concurrency_Control.docx* (Word Document)
-
-
-* *Lecture_43_44_45_Database_Recovery.docx* (Word Document)
-
-
-* *Database-Unit-3-Chapter8- Lecture 40, 41, 42.pptx* (PowerPoint)
-
-
-* *Database-Unit3-Chapter9- Lecture 43, 44.pptx* (PowerPoint)
-
-
-* *Database-Unit3-Chapter9- Lecture 45.pptx* (PowerPoint)
-
-
-
-
+# 🎓 CUIMS Mobile (Unofficial) — Chandigarh University LMS Portal
+
+<p align="center">
+  <img src="assets/images/app_icon.png" alt="CUIMS LMS Logo" width="160" height="160" style="border-radius: 32px; box-shadow: 0 8px 24px rgba(211, 47, 47, 0.25);" />
+</p>
+
+<p align="center">
+  <strong>A modern, high-performance, and feature-rich mobile client for Chandigarh University's Learning Management System (CUIMS / Moodle).</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Flutter-3.47+-02569B?logo=flutter&logoColor=white" alt="Flutter" />
+  <img src="https://img.shields.io/badge/Dart-3.13+-0175C2?logo=dart&logoColor=white" alt="Dart" />
+  <img src="https://img.shields.io/badge/State_Management-Riverpod_3-purple" alt="Riverpod" />
+  <img src="https://img.shields.io/badge/Platforms-Android%20%7C%20Linux%20%7C%20Web-success" alt="Platforms" />
+  <img src="https://img.shields.io/badge/Tests-49%20Passed-brightgreen" alt="Tests" />
+  <img src="https://img.shields.io/badge/License-MIT-blue" alt="License" />
+</p>
 
 ---
 
-### Dynamic UI Screen Implementation
+## 📌 Table of Contents
+1. [Overview & Project Purpose](#-overview--project-purpose)
+2. [Visual Identity & App Icon](#-visual-identity--app-icon)
+3. [Complete Feature Showcase](#-complete-feature-showcase)
+   - [Cloud SSO & Session Engine](#1-cloud-sso--session-engine)
+   - [Academic Dashboard](#2-academic-dashboard)
+   - [Dual-Course Syllabus & Material Hub](#3-dual-course-syllabus--material-hub)
+   - [Assignment Hub & In-App Submissions](#4-assignment-hub--in-app-submissions)
+   - [Medium-Style Reading & Text-to-Speech](#5-medium-style-reading--text-to-speech)
+   - [Unit ZIP Exporter & Learn with AI](#6-unit-zip-exporter--learn-with-ai)
+   - [AI Quiz Assistant & In-App Browser](#7-ai-quiz-assistant--distraction-free-in-app-browser)
+   - [Deadline Alarms & Local Notifications](#8-deadline-alarms--local-notifications)
+   - [Offline Caching & Developer Diagnostics](#9-offline-caching--developer-diagnostics)
+4. [Architecture & State Management](#-architecture--state-management)
+5. [Project Structure](#-project-structure)
+6. [Prerequisites & Setup Guide](#-prerequisites--setup-guide)
+7. [Running & Testing](#-running--testing)
+8. [Engineering Review & Flagged Uncertainties](#-engineering-review--flagged-uncertainties)
 
-Here is a clean, modern HTML/CSS/JS frontend that consumes the dynamically extracted JSON format and renders the appropriate UI depending on whether the content is a single document or a folder.
+---
 
-Save this code as an `.html` file and open it in a browser to view the unified interface.
+## 📖 Overview & Project Purpose
 
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dynamic Course Content Viewer</title>
-<style>
-    :root {
-        --primary: #e82427;
-        --bg-color: #f8fafc;
-        --card-bg: #ffffff;
-        --text-main: #1d2125;
-        --text-muted: #64748b;
-        --border: #e2e8f0;
-    }
-    body {
-        font-family: 'Segoe UI', system-ui, sans-serif;
-        background-color: var(--bg-color);
-        color: var(--text-main);
-        margin: 0;
-        padding: 2rem;
-    }
-    .container {
-        max-width: 900px;
-        margin: 0 auto;
-    }
-    .header {
-        margin-bottom: 2rem;
-        padding-bottom: 1rem;
-        border-bottom: 2px solid var(--border);
-    }
-    .header h1 { margin: 0; font-size: 1.5rem; }
-    
-    /* Document Viewer Styles */
-    .viewer-card {
-        background: var(--card-bg);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        margin-bottom: 2rem;
-    }
-    .viewer-toolbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 1rem 1.5rem;
-        background: #f1f5f9;
-        border-bottom: 1px solid var(--border);
-    }
-    .viewer-toolbar span { font-weight: 600; }
-    .btn {
-        background: var(--primary);
-        color: white;
-        padding: 0.5rem 1rem;
-        text-decoration: none;
-        border-radius: 4px;
-        font-size: 0.875rem;
-        font-weight: 500;
-        transition: opacity 0.2s;
-    }
-    .btn:hover { opacity: 0.9; }
-    .iframe-container {
-        position: relative;
-        padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
-        height: 0;
-    }
-    .iframe-container iframe {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        border: 0;
-    }
+The official Chandigarh University Learning Management System (Moodle) portal is primarily designed for desktop browsers. On mobile devices, students often encounter:
+- Cumbersome SSO authentication barriers with complex redirects and OCR captchas.
+- Cluttered desktop web interfaces with redundant navigation menus and tiny touch targets.
+- Disconnected course spaces (separation of study notes `CONT_...` from testing modules `25CSH-...`).
+- Inability to quickly read documents offline or download entire units without clicking dozens of nested links.
+- Missed assignment and quiz submission deadlines due to lack of native device alarms.
 
-    /* Folder Explorer Styles */
-    .folder-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-        gap: 1rem;
-    }
-    .file-card {
-        background: var(--card-bg);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 1rem;
-        display: flex;
-        align-items: flex-start;
-        gap: 1rem;
-        text-decoration: none;
-        color: var(--text-main);
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .file-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        border-color: var(--primary);
-    }
-    .file-icon {
-        font-size: 1.5rem;
-        flex-shrink: 0;
-    }
-    .file-details {
-        overflow: hidden;
-    }
-    .file-name {
-        font-size: 0.9rem;
-        font-weight: 500;
-        margin: 0 0 0.25rem 0;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .file-type {
-        font-size: 0.75rem;
-        color: var(--text-muted);
-        text-transform: uppercase;
-    }
-</style>
-</head>
-<body>
+**CUIMS Mobile (Unofficial)** solves these challenges by acting as a native companion app. It routes university student credentials through a dedicated serverless SSO gateway, manages real Moodle session cookies and security tokens (`sesskey`), directly queries Moodle 4/5 AJAX endpoints, and provides a polished Material 3 experience with offline caching, document readers, assignment submission management, and AI-assisted study tools.
 
-<div class="container" id="app">
-    <!-- UI will be injected here dynamically -->
-</div>
+---
 
-<script>
-    // Simulated JSON data generated by the extraction script
-    const extractedData = [
-        {
-            pageTitle: "Lecture 8,9 PPTX",
-            type: "single_document",
-            items: [{
-                name: "Lecture 8,9.pptx",
-                viewerUrl: "https://lms.cuchd.in/local/officeviewer/pdf.php?id=3435104&h=bd9cf54c3c34e05c9683542a029b650bebae5826",
-                downloadUrl: "#"
-            }]
-        },
-        {
-            pageTitle: "Course Contents",
-            type: "folder_directory",
-            items: [
-                { name: "Lecture_40_42_Concurrency_Control.docx", downloadUrl: "#", type: "docx" },
-                { name: "Database-Unit-3-Chapter8- Lecture 40, 41, 42.pptx", downloadUrl: "#", type: "pptx" }
-            ]
-        }
-    ];
+## 🎨 Visual Identity & App Icon
 
-    function getIconForType(type) {
-        switch(type) {
-            case 'pptx': return '📊';
-            case 'docx': return '📄';
-            case 'pdf': return '📕';
-            default: return '📁';
-        }
-    }
+The application's emblem is based on Chandigarh University's academic branding, featuring the **Continuous Learning Cycle**:
+- **Mortarboard / Graduation Cap**: The central focus of academic achievement and student success.
+- **Continuous Circular Arrows**: Seamless progression through course units, practicals, and assessments.
+- **Three Knowledge Nodes with Sparkles**: Mastery of Theory, Practical Lab Work, and Continuous Evaluation.
+- **Brand Crimson Red (`#D32F2F` / `#C62828`)**: Chandigarh University's signature color.
 
-    function renderUI(dataArray) {
-        const app = document.getElementById('app');
-        let html = '';
+### Asset Locations
+- Master Icon (1024×1024): [`assets/images/app_icon.png`](assets/images/app_icon.png)
+- Master Transparent Glyph: [`assets/images/app_icon_red_glyph.png`](assets/images/app_icon_red_glyph.png)
+- Android Adaptive Icons: `android/app/src/main/res/mipmap-*/` (`ic_launcher.png`, `ic_launcher_round.png`, `ic_launcher_foreground.png`, `ic_launcher_background.png`)
+- Web Icons: `web/icons/Icon-192.png`, `web/icons/Icon-512.png`, `web/favicon.png`
 
-        dataArray.forEach(data => {
-            html += `<div class="header"><h1>${data.pageTitle}</h1></div>`;
+---
 
-            if (data.type === 'single_document') {
-                const item = data.items[0];
-                html += `
-                    <div class="viewer-card">
-                        <div class="viewer-toolbar">
-                            <span>📄 ${item.name}</span>
-                            <a href="${item.downloadUrl}" class="btn">Download Original</a>
-                        </div>
-                        <div class="iframe-container">
-                            <!-- Placeholder for iframe to prevent live loading in this demo -->
-                            <div style="display:flex; align-items:center; justify-content:center; height:100%; background:#e2e8f0;">
-                                <p style="color:#64748b">Iframe Viewer: ${item.viewerUrl}</p>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            } else if (data.type === 'folder_directory') {
-                html += `<div class="folder-grid">`;
-                data.items.forEach(item => {
-                    html += `
-                        <a href="${item.downloadUrl}" class="file-card">
-                            <div class="file-icon">${getIconForType(item.type)}</div>
-                            <div class="file-details">
-                                <h3 class="file-name" title="${item.name}">${item.name}</h3>
-                                <span class="file-type">${item.type} File</span>
-                            </div>
-                        </a>
-                    `;
-                });
-                html += `</div>`;
-            }
-        });
+## 🚀 Complete Feature Showcase
 
-        app.innerHTML = html;
-    }
+### 1. Cloud SSO & Session Engine
+- **Serverless SSO Gateway**: Sends user credentials to a Vercel serverless proxy (`https://lmssso.vercel.app/api/sso`) using Bearer token authentication.
+- **Graceful Delay Handling**: Accommodates the serverless gateway's 5-second processing window with real-time status feedback.
+- **Manual Captcha Fallback**: If gateway OCR fails or triggers a captcha challenge, a native `CaptchaDialog` displays the base64 image challenge for student input.
+- **Cookie & Token Capture**: Intercepts Moodle autologin redirects, persists the authenticated `MoodleSession` cookie, and extracts the dynamic `sesskey` required for all Moodle AJAX operations.
+- **Session Validation & Auto-Login**: Validates saved sessions on application launch and automatically redirects to the dashboard if still active.
 
-    // Initialize the UI
-    renderUI(extractedData);
-</script>
+### 2. Academic Dashboard
+- **Academic Statistics**: Real-time metrics tracking enrolled courses, in-progress courses, and pending deadlines.
+- **Upcoming Timeline Events**: Fetches scheduled quizzes, assignments, and test deadlines via Moodle's `core_calendar_get_action_events_by_timesort`.
+- **Urgency Indicators**: Color-coded badges indicating overdue tasks, items due today, and upcoming deadlines with countdowns.
+- **Quick Resume Carousel**: Horizontally scrolling cards for recently accessed courses featuring staggered slide animations (`SlideScrollItem`).
+- **Notification Permission Banner**: Startup prompt requesting notification permissions with contextual explanation.
 
-</body>
-</html>
+### 3. Dual-Course Syllabus & Material Hub
+- **Dual-Course Architecture**: Automatically detects and links companion courses between Study Content (`CONT_...`) and Assessment / Test courses (`25CSH-...`).
+- **1-Tap Companion Switcher**: Switch between a subject's lecture notes and its corresponding quizzes/tests without searching the catalog.
+- **Moodle 4/5 AJAX Tree Parsing**: Direct integration with `core_courseformat_get_state` to parse course structures in under 350ms.
+- **Smart Category Filtering**: Dynamic tabs that adapt to each course:
+  - 📖 **Theory**: Filtered lecture units and chapter folders.
+  - 🧪 **Practical**: Lab experiments, code files, and manual sheets.
+  - 📋 **Assessment Model**: Weightage breakdowns and course outlines.
+  - 📹 **Live Session Links**: Direct Zoom / Google Meet / MS Teams join actions.
+  - ⚡ **Surprise Tests & Quizzes**: Direct links to online assessments.
+  - 📑 **Assignments**: Coursework submissions and problem sets.
+- **Sub-Unit Hierarchy**: Groups materials into `Unit 1`, `Unit 2`, `Chapter 1.1`, `Chapter 1.2` while hiding empty template sections.
+
+### 4. Assignment Hub & In-App Submissions
+- **Complete Assignment Details**: Scrapes deadline dates, remaining time, submission status (Submitted, Draft, Overdue), grading status, and rubric files.
+- **Native File Picker**: Allows selecting PDF, Word, ZIP, and code files from device storage.
+- **Moodle Draft File Area Upload**: Communicates directly with Moodle's `/repository/repository_ajax.php?action=upload` to stage draft files.
+- **Draft Management**: View and delete staged draft files with live status updates.
+- **Final Submission Lock**: Locks final submission via `mod_assign_save_submission` directly within the app.
+
+### 5. Medium-Style Reading & Text-to-Speech
+- **In-App PDF Viewer**: Powered by `pdfrx` with pinch-to-zoom, page thumbnails, page jumper, color inversion (night mode), and native file sharing via `share_plus`.
+- **Editorial Markdown Viewer**: Clean typography with support for LaTeX formulas, tables, and code snippets.
+- **High-Contrast Reading Themes**:
+  - 📜 *Warm Sepia* (Medium-style comfort reading)
+  - ☀️ *Clean Light*
+  - 🌙 *Soft Dark*
+  - ⬛ *OLED Black* (Pure `#000000` AMOLED power-saving mode)
+  - 🌲 *Forest Mist* (Calming green tint)
+- **Customizable Typography**: Switch between *Inter*, *Plus Jakarta Sans*, *Roboto*, *Literata*, or *System Default*.
+- **Integrated Text-to-Speech (TTS)**: Built-in voice synthesizer (`flutter_tts`) that narrates lecture notes aloud with adjustable speech rate, pitch, and playback controls.
+
+### 6. Unit ZIP Exporter & "Learn with AI"
+- **Batch Unit Exporter**: Downloads all documents (PPTX, PDF, DOCX, TXT) within an entire course unit and packages them into an on-the-fly `.zip` archive using `archive`.
+- **Native System Sharing**: Exports ZIP files to external storage, WhatsApp, Telegram, or Google Drive via `share_plus`.
+- **"Learn with AI" Prompt Generator**:
+  - Generates a structured study prompt specifying source priorities (`DOCX > PPT > TXT`).
+  - Pre-populates the university subject and unit title.
+  - Copies the prompt to clipboard and opens Google Gemini or ChatGPT in one tap, ready for the user to attach the downloaded unit ZIP.
+
+### 7. AI Quiz Assistant & Distraction-Free In-App Browser
+- **Session-Synchronized In-App Browser**: `AppBrowserScreen` embeds WebView with injected `MoodleSession` cookies to access any LMS link without logging in again.
+- **Clean Mode CSS/JS**: Strips away header navigation, sidebars, and footers, leaving only the quiz questions.
+- **AI Quiz Helper (`QuizAiService`)**:
+  - Automatically parses Moodle question containers (`.que.multichoice`, `.qtext`, `.answer div.r0/r1`, `input[type="radio"]`).
+  - Sends question context to either **Google Gemini** (`gemini-1.5-flash`, etc.) or **OpenAI** (`gpt-4o-mini`, etc.).
+  - Visually highlights recommended options with explanations in an inline badge.
+  - **Academic Safety Policy**: Strictly designed as a study aid — marks recommended options and explains reasoning, but **never automatically submits or advances** the quiz attempt.
+- **Live AI Model Discovery**: Queries AI provider APIs (`GET /v1beta/models` for Gemini, `GET /v1/models` for OpenAI) to populate active models dynamically.
+- **Automated AI Response Tester**: Interactive test dialog that runs a predefined math question to verify API connectivity and response quality.
+- **Anti-Accidental Exit Guard**: Warns students before closing or navigating away from an ongoing quiz attempt.
+
+### 8. Deadline Alarms & Local Notifications
+- **Scheduled Alarms**: Uses `flutter_local_notifications` and `timezone` to schedule precise local notifications for upcoming quiz and assignment deadlines.
+- **Customizable Advance Notice**: Configurable reminders (1 hour, 3 hours, 6 hours, 12 hours, or 24 hours before deadline).
+- **Background Persistence**: Alarms trigger independently even if the app is closed.
+
+### 9. Offline Caching & Developer Diagnostics
+- **Two-Tier Cache Engine**:
+  - Level 1: In-memory cache for instant navigation.
+  - Level 2: Local disk cache (`CacheService`) storing course catalogs, unit hierarchies, and downloaded PDFs with configurable TTL (default: 12 hours).
+- **Cache Management**: Real-time cache size calculation and 1-tap cache clear in Settings.
+- **Live Debug Console (`DebugLogsScreen`)**: Real-time in-app HTTP/INFO/ERROR inspector with tag filtering, search, and clipboard export.
+- **Quick Diagnostics**: Built-in triggers to test SSO Gateway ping, Course List fetch, and Calendar Event fetch.
+- **CLI Test Script (`bin/test_fetch.dart`)**: Standalone terminal tool for developers to test Moodle AJAX endpoints and session cookies without launching Flutter UI.
+
+---
+
+## 🏛 Architecture & State Management
+
+The application is built on **Modular Clean Architecture** principles and powered by **Riverpod 3** (`Notifier` and `NotifierProvider`).
 
 ```
+lib/
+├── core/                       # Foundation Services & Application Config
+│   ├── config/                 # Global constants, URLs, timeouts
+│   ├── services/               # Singletons: Cookie, Cache, Alarm, TTS, ZIP, Log, AI
+│   └── theme/                  # App theme, reading themes, dynamic color seeds
+├── data/                       # Data & Network Layer
+│   ├── models/                 # Pure Dart models with JSON serialization
+│   └── network/                # LmsApiClient (SSO, Moodle AJAX, Scrapers)
+├── providers/                  # Riverpod 3 State Management
+│   ├── auth_provider.dart      # AuthState state machine & credentials
+│   ├── course_provider.dart    # Courses catalog, search, and category filters
+│   ├── dashboard_provider.dart # Academic metrics and calendar events
+│   ├── assignment_provider.dart# Assignment details & submission config
+│   ├── settings_provider.dart  # App settings & preferences with persistence
+│   └── app_providers.dart      # Global provider registry & dependency injection
+└── ui/                         # Presentation Layer
+    ├── common/                 # Reusable widgets (Nav bar, Banners, Animations)
+    └── screens/                # Feature screens (Auth, Dashboard, Courses, Reader, Quiz, Settings)
+```
+
+### State Management Highlights
+| Provider | Type | Role |
+| :--- | :--- | :--- |
+| `settingsProvider` | `Notifier<AppSettings>` | Manages theme mode, typography, reading contrast, AI API keys, and SSO gateway overrides with `SharedPreferences` persistence. |
+| `authProvider` | `Notifier<AuthState>` | Reactive state machine (`initial` ➔ `connectingGateway` ➔ `captchaRequired` ➔ `loggingInMoodle` ➔ `authenticated`). |
+| `coursesProvider` | `Notifier<CourseListState>` | Manages enrolled courses, search query filtering, and category selection. |
+| `dashboardProvider` | `Notifier<DashboardState>` | Fetches and manages timeline deadlines, stats, and course shortcuts. |
+| `assignmentDetailProvider` | `FutureProvider.family` | Fetches and caches individual assignment details and submission status. |
+| `ttsProvider` | `Notifier<TtsState>` | Controls audio narration state (playing, paused, progress, word position). |
+
+---
+
+## 📂 Project Structure
+
+```
+cuims_unofficial2/
+├── android/                    # Android native configuration & launcher icons
+├── assets/
+│   └── images/                 # App icon master glyphs and assets
+├── bin/
+│   └── test_fetch.dart         # Standalone CLI testing script
+├── lib/                        # Flutter Dart source code (Clean Architecture)
+├── test/                       # 49 unit and widget tests
+│   ├── fixtures/               # Real Moodle quiz DOM test fixtures
+│   ├── ai_study_prompt_sheet_test.dart
+│   ├── auth_autologin_test.dart
+│   ├── custom_bottom_nav_test.dart
+│   ├── models_and_cache_test.dart
+│   ├── quiz_ai_test.dart
+│   ├── slide_scroll_item_test.dart
+│   ├── widget_test.dart
+│   └── zip_export_service_test.dart
+├── Progress.md                 # Detailed implementation milestone tracker
+├── course_inside.md            # Technical analysis of Moodle AJAX endpoints
+└── pubspec.yaml                # Project dependencies and asset definitions
+```
+
+---
+
+## ⚙️ Prerequisites & Setup Guide
+
+### 1. Prerequisites
+- **Flutter SDK**: `>= 3.47.0` (Dart SDK `>= 3.13.4`)
+- **Android Studio / Android SDK**: Platform API 34+
+- **Linux Build Tools** (if building for Linux desktop): `clang`, `cmake`, `ninja-build`, `pkg-config`, `libgtk-3-dev`
+- **Git**
+
+### 2. Clone and Install Dependencies
+```bash
+git clone https://github.com/<your-repo>/cuims_unofficial2.git
+cd cuims_unofficial2
+flutter pub get
+```
+
+### 3. Key Dependencies
+- **Networking & State**: `dio`, `cookie_jar`, `dio_cookie_manager`, `flutter_riverpod`
+- **File Handling & Storage**: `archive`, `path_provider`, `shared_preferences`, `file_picker`, `share_plus`
+- **Document Viewing**: `pdfrx` (PDF rendering), `flutter_markdown` (Markdown notes)
+- **Audio & Notifications**: `flutter_tts` (Text-To-Speech), `flutter_local_notifications`, `timezone`
+- **In-App Browser**: `webview_flutter`
+- **UI & Typography**: `google_fonts`, `cupertino_icons`
+
+---
+
+## 🧪 Running & Testing
+
+### Run on Connected Device / Emulator
+```bash
+# Run on Android
+flutter run -d android
+
+# Run on Linux Desktop
+flutter run -d linux
+
+# Run on Chrome
+flutter run -d chrome
+```
+
+### Execute Test Suite
+The codebase includes 49 automated unit, widget, and DOM parsing tests:
+```bash
+flutter test
+```
+
+### Terminal CLI Diagnostic Tool
+You can test Moodle session authentication and endpoint scraping directly from your terminal without opening the Flutter UI:
+```bash
+# Using saved session or interactive login:
+dart run bin/test_fetch.dart
+
+# Or pass specific session cookies:
+dart run bin/test_fetch.dart --session <MoodleSessionCookie> --sesskey <sesskey>
+```
+
+---
+
+## ⚠️ Engineering Review & Flagged Uncertainties
+
+During analysis of this codebase, the following items were identified for awareness and ongoing maintenance:
+
+1. **Vercel Serverless SSO Gateway Dependency**:
+   - The initial authentication stage relies on `https://lmssso.vercel.app/api/sso` with a default Bearer token (`dont_use_please`).
+   - If the Vercel deployment experience rate limits, cold-start timeouts (>40s), or is taken offline, users will not be able to authenticate unless they configure a custom endpoint in **Settings -> SSO Gateway Configuration**.
+2. **Moodle Web & AJAX DOM Selectors**:
+   - Features like the Assignment Details Scraper, File Uploader, and AI Quiz Assistant parse specific Moodle HTML class names (`.que.multichoice`, `.qtext`, `.generaltable`, etc.).
+   - If Chandigarh University updates Moodle core or adopts a substantially different custom web theme, these DOM selectors may need maintenance.
+3. **Moodle Session Lifespan**:
+   - Moodle server sessions typically expire after 2–4 hours of inactivity. The app includes session validation on launch, but active sessions may occasionally require re-authentication if left idle for extended periods.
+4. **Third-Party AI API Keys**:
+   - The Quiz AI Assistant requires a personal Google Gemini API key or OpenAI API key entered by the user in Settings. No keys are hardcoded in the codebase.
+5. **iOS Native Setup**:
+   - The codebase has been verified on Android and Linux desktop. For iOS builds, notification permissions and `pdfrx` native framework dependencies must be configured in `ios/Runner/Info.plist` and CocoaPods.
+
+---
+
+<p align="center">
+  Built with ❤️ for Chandigarh University Students.
+</p>
