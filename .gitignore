@@ -1,0 +1,129 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Widget Preview related
+.widget_preview/
+
+# ----------------------------------------------------
+# Node Modules & NPM/Yarn/Pnpm
+# ----------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# ----------------------------------------------------
+# AI Markdown Files, Prompts & AI Agent Artifacts
+# ----------------------------------------------------
+# AI tracker & scratch documentation
+[Pp]rogress.md
+course_inside.md
+*.[aA][iI].md
+*_[aA][iI].md
+[aA][iI]_*.md
+*[aA][iI]*.md
+*[aA]gent*.md
+*[pP]rompt*.md
+*[cC]opilot*.md
+*[sS]cratchpad*.md
+*.chat.md
+.agents/
+.gemini/
+.claude/
+.cursor/
+.windsurf/
+.antigravity/
+
+# Ensure main repository README is preserved
+!README.md
+!readme.md
+
+# ----------------------------------------------------
+# Sensitive Data, Credentials & Secrets
+# ----------------------------------------------------
+# Environment variables and configs
+.env
+.env.*
+*.env
+*.env.*
+
+# Session caches, tokens and cookies
+.session_cache.json
+*session*.json
+*cache*.json
+*.session
+*.token
+token.json
+tokens.json
+credentials.json
+auth.json
+secret.json
+secrets.json
+*.secret
+*.secrets
+
+# Private keys, certificates and keystores
+*.key
+*.pem
+*.cer
+*.crt
+*.p12
+*.pfx
+*.keystore
+*.jks
+
+# Android & iOS sensitive secrets and build properties
+local.properties
+key.properties
+google-services.json
+GoogleService-Info.plist
+
+# Network traffic dumps, scraping samples with session/auth data
+*.har
+*.dump
+sample_quiz_page.html
