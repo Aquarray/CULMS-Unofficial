@@ -1,4 +1,4 @@
-# 🎓 CUIMS Mobile (Unofficial) — Chandigarh University LMS Portal
+# 🎓 CULMS Mobile (Unofficial) — Chandigarh University LMS Portal
 
 <p align="center">
   <img src="assets/images/app_icon.png" alt="CUIMS LMS Logo" width="160" height="160" style="border-radius: 32px; box-shadow: 0 8px 24px rgba(211, 47, 47, 0.25);" />
