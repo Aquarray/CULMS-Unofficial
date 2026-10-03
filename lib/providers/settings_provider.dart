@@ -32,6 +32,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _saveSettings(state.copyWith(themeMode: mode));
   }
 
+  void updateAccentColor(AppAccentColor color) {
+    _saveSettings(state.copyWith(accentColor: color));
+  }
+
   void updateFontFamily(AppFontFamily family) {
     _saveSettings(state.copyWith(fontFamily: family));
   }

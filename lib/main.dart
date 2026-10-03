@@ -73,8 +73,15 @@ class _CuimsAppState extends ConsumerState<CuimsApp> {
       title: 'CUIMS LMS',
       debugShowCheckedModeBanner: false,
       themeMode: themeMode,
-      theme: AppTheme.lightTheme(settings.fontFamily),
-      darkTheme: AppTheme.darkTheme(settings.fontFamily, isAmoled: isAmoled),
+      theme: AppTheme.lightTheme(
+        settings.fontFamily,
+        seedColor: settings.accentColor.resolve(false),
+      ),
+      darkTheme: AppTheme.darkTheme(
+        settings.fontFamily,
+        seedColor: settings.accentColor.resolve(true),
+        isAmoled: isAmoled,
+      ),
       home: authState.isAuthenticated ? const HomeShell() : const LoginScreen(),
     );
   }

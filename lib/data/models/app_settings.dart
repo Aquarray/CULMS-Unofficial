@@ -1,6 +1,74 @@
 import 'dart:convert';
+import 'package:flutter/material.dart';
 
 enum AppThemeMode { system, light, dark, amoled }
+
+enum AppAccentColor {
+  tuscanCarmine(
+    label: 'Tuscan Carmine',
+    subtitle: 'Academic Crimson',
+    colorValue: 0xFF9B2226,
+    darkColorValue: 0xFFDC2626,
+  ),
+  oxfordIndigo(
+    label: 'Oxford Indigo',
+    subtitle: 'Midnight Ink',
+    colorValue: 0xFF1E3A8A,
+    darkColorValue: 0xFF2563EB,
+  ),
+  sageForest(
+    label: 'Sage Forest',
+    subtitle: 'British Racing Green',
+    colorValue: 0xFF1B4332,
+    darkColorValue: 0xFF16A34A,
+  ),
+  warmTerracotta(
+    label: 'Warm Terracotta',
+    subtitle: 'Burnt Sienna',
+    colorValue: 0xFFC2410C,
+    darkColorValue: 0xFFEA580C,
+  ),
+  imperialPlum(
+    label: 'Imperial Plum',
+    subtitle: 'Royal Mulberry',
+    colorValue: 0xFF6B21A8,
+    darkColorValue: 0xFF9333EA,
+  ),
+  nordicSlate(
+    label: 'Nordic Slate',
+    subtitle: 'Graphite Steel',
+    colorValue: 0xFF334155,
+    darkColorValue: 0xFF475569,
+  ),
+  roastedUmber(
+    label: 'Roasted Umber',
+    subtitle: 'Espresso Cognac',
+    colorValue: 0xFF78350F,
+    darkColorValue: 0xFFB45309,
+  ),
+  aegeanTeal(
+    label: 'Aegean Teal',
+    subtitle: 'Deep Marine',
+    colorValue: 0xFF0E7490,
+    darkColorValue: 0xFF0284C7,
+  );
+
+  final String label;
+  final String subtitle;
+  final int colorValue;
+  final int darkColorValue;
+
+  const AppAccentColor({
+    required this.label,
+    required this.subtitle,
+    required this.colorValue,
+    required this.darkColorValue,
+  });
+
+  Color get color => Color(colorValue);
+  Color get darkColor => Color(darkColorValue);
+  Color resolve(bool isDark) => isDark ? darkColor : color;
+}
 
 enum ReaderContrast {
   cleanLight,
@@ -25,6 +93,7 @@ enum QuizAiProvider {
 
 class AppSettings {
   final AppThemeMode themeMode;
+  final AppAccentColor accentColor;
   final ReaderContrast readerContrast;
   final AppFontFamily fontFamily;
   final double fontScale;
@@ -52,6 +121,7 @@ class AppSettings {
 
   const AppSettings({
     this.themeMode = AppThemeMode.system,
+    this.accentColor = AppAccentColor.tuscanCarmine,
     this.readerContrast = AppContrastFallback.defaultReaderContrast,
     this.fontFamily = AppFontFamily.inter,
     this.fontScale = 1.0,
@@ -80,6 +150,7 @@ class AppSettings {
 
   AppSettings copyWith({
     AppThemeMode? themeMode,
+    AppAccentColor? accentColor,
     ReaderContrast? readerContrast,
     AppFontFamily? fontFamily,
     double? fontScale,
@@ -107,6 +178,7 @@ class AppSettings {
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
+      accentColor: accentColor ?? this.accentColor,
       readerContrast: readerContrast ?? this.readerContrast,
       fontFamily: fontFamily ?? this.fontFamily,
       fontScale: fontScale ?? this.fontScale,
@@ -137,6 +209,7 @@ class AppSettings {
   Map<String, dynamic> toMap() {
     return {
       'themeMode': themeMode.name,
+      'accentColor': accentColor.name,
       'readerContrast': readerContrast.name,
       'fontFamily': fontFamily.name,
       'fontScale': fontScale,
@@ -169,6 +242,10 @@ class AppSettings {
       themeMode: AppThemeMode.values.firstWhere(
         (e) => e.name == map['themeMode'],
         orElse: () => AppThemeMode.system,
+      ),
+      accentColor: AppAccentColor.values.firstWhere(
+        (e) => e.name == map['accentColor'],
+        orElse: () => AppAccentColor.tuscanCarmine,
       ),
       readerContrast: ReaderContrast.values.firstWhere(
         (e) => e.name == map['readerContrast'],

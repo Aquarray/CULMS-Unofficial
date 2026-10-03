@@ -564,6 +564,72 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ],
                   ),
+                  const Divider(height: 28),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const Text(
+                        'Editorial Accent Tone',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                      ),
+                      const Spacer(),
+                      Builder(
+                        builder: (ctx) {
+                          final isDark = Theme.of(ctx).brightness == Brightness.dark;
+                          final accentCol = settings.accentColor.resolve(isDark);
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: accentCol.withValues(alpha: isDark ? 0.22 : 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: accentCol.withValues(alpha: 0.4),
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              settings.accentColor.label,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : accentCol,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Curated architectural palettes. Instantly themes headings, controls, badges, and reading views.',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white60
+                          : const Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: AppAccentColor.values.length,
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: 2.3,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                    ),
+                    itemBuilder: (context, index) {
+                      final item = AppAccentColor.values[index];
+                      return _AccentColorTile(
+                        accent: item,
+                        isSelected: settings.accentColor == item,
+                        onTap: () => settingsNotifier.updateAccentColor(item),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
@@ -1502,6 +1568,104 @@ class _ThemeOptionTile extends StatelessWidget {
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AccentColorTile extends StatelessWidget {
+  final AppAccentColor accent;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _AccentColorTile({
+    required this.accent,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final effectiveColor = accent.resolve(isDark);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(9),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? effectiveColor.withValues(alpha: isDark ? 0.22 : 0.09)
+                : (isDark ? const Color(0xFF161615) : const Color(0xFFF7F6F2)),
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(
+              color: isSelected
+                  ? effectiveColor
+                  : (isDark ? const Color(0xFF2C2C28) : const Color(0xFFE5E3DC)),
+              width: isSelected ? 1.6 : 1.0,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: effectiveColor,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: effectiveColor.withValues(alpha: 0.35),
+                      blurRadius: 3,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: isSelected
+                    ? const Icon(Icons.check_rounded, size: 15, color: Colors.white)
+                    : null,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      accent.label,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                        color: isSelected
+                            ? (isDark ? Colors.white : effectiveColor)
+                            : (isDark ? const Color(0xFFF4F3EE) : const Color(0xFF181816)),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      accent.subtitle,
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w400,
+                        color: isDark ? const Color(0xFF8E8D88) : const Color(0xFF75746E),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

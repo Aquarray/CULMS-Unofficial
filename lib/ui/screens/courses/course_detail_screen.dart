@@ -906,6 +906,10 @@ $cleanText
     final isQuiz = act.iconType == 'quiz';
     final isAssign = act.iconType == 'assign';
 
+    final theme = Theme.of(context);
+    final quizBg = theme.colorScheme.primary;
+    final quizFg = isDark ? theme.colorScheme.onPrimary : Colors.white;
+
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
@@ -920,63 +924,70 @@ $cleanText
       ),
       trailing: isUrl
           ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF0284C7) : const Color(0xFF0369A1),
                 borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isDark ? const Color(0xFF38BDF8).withValues(alpha: 0.4) : const Color(0xFF075985).withValues(alpha: 0.2),
+                  width: 1,
+                ),
               ),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Join Link', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
-                  SizedBox(width: 4),
-                  Icon(Icons.launch_rounded, size: 12, color: Colors.white),
+                  Text(
+                    'Join Link',
+                    style: TextStyle(fontSize: 11.5, color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 0.2),
+                  ),
+                  SizedBox(width: 5),
+                  Icon(Icons.launch_rounded, size: 13, color: Colors.white),
                 ],
               ),
             )
           : (isQuiz
               ? Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF7C3AED) : const Color(0xFF6D28D9),
+                    color: quizBg,
                     borderRadius: BorderRadius.circular(8),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF6D28D9).withValues(alpha: 0.3),
-                        blurRadius: 4,
-                        offset: const Offset(0, 1),
-                      ),
-                    ],
+                    border: Border.all(
+                      color: isDark ? Colors.white24 : theme.colorScheme.primary.withValues(alpha: 0.35),
+                      width: 1,
+                    ),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('Attempt Quiz', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
-                      SizedBox(width: 4),
-                      Icon(Icons.arrow_forward_rounded, size: 12, color: Colors.white),
+                      Text(
+                        'Attempt Quiz',
+                        style: TextStyle(fontSize: 11.5, color: quizFg, fontWeight: FontWeight.w700, letterSpacing: 0.2),
+                      ),
+                      const SizedBox(width: 5),
+                      Icon(Icons.arrow_forward_rounded, size: 13, color: quizFg),
                     ],
                   ),
                 )
               : (isAssign
                   ? Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
                       decoration: BoxDecoration(
                         color: isDark ? const Color(0xFFD97706) : const Color(0xFFB45309),
                         borderRadius: BorderRadius.circular(8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFFD97706).withValues(alpha: 0.3),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
+                        border: Border.all(
+                          color: isDark ? const Color(0xFFF59E0B).withValues(alpha: 0.4) : const Color(0xFF92400E).withValues(alpha: 0.2),
+                          width: 1,
+                        ),
                       ),
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('View Task', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
-                          SizedBox(width: 4),
-                          Icon(Icons.arrow_forward_rounded, size: 12, color: Colors.white),
+                          Text(
+                            'View Task',
+                            style: TextStyle(fontSize: 11.5, color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 0.2),
+                          ),
+                          SizedBox(width: 5),
+                          Icon(Icons.arrow_forward_rounded, size: 13, color: Colors.white),
                         ],
                       ),
                     )

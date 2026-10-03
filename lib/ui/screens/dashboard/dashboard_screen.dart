@@ -178,7 +178,7 @@ class DashboardScreen extends ConsumerWidget {
                         width: 240,
                         child: Card(
                           child: InkWell(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(10),
                             onTap: () {
                               Navigator.push(
                                 context,

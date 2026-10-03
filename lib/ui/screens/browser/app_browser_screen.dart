@@ -291,21 +291,55 @@ class _AppBrowserScreenState extends ConsumerState<AppBrowserScreen> {
         font-weight: 700 !important;
         box-shadow: 0 4px 12px rgba(220, 38, 38, 0.15) !important;
       }
-      .submitbtns, .mod_quiz-next-nav {
-        margin-top: 16px !important;
+      .submitbtns, .mod_quiz-next-nav, .quizstartbuttondiv, .quizsummarybtns {
+        margin-top: 18px !important;
         display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 10px !important;
         justify-content: flex-end !important;
       }
-      .submitbtns input[type="submit"], input.mod_quiz-next-nav, .btn-primary {
-        background: #6366f1 !important;
+      .submitbtns input[type="submit"], 
+      input.mod_quiz-next-nav, 
+      .btn-primary, 
+      .quizstartbuttondiv button, 
+      .quizstartbuttondiv input,
+      .singlebutton button.btn-primary, 
+      .singlebutton input[type="submit"],
+      .mod_quiz_preflight_popup input[type="submit"],
+      .mod_quiz_preflight_popup button,
+      input[value*="Attempt quiz"],
+      button:has(span:contains("Attempt quiz")) {
+        background: #1d4ed8 !important;
         color: #ffffff !important;
-        border: none !important;
-        border-radius: 12px !important;
-        padding: 12px 28px !important;
+        border: 1.5px solid ${isDark ? '#60a5fa' : '#1e40af'} !important;
+        border-radius: 8px !important;
+        padding: 12px 26px !important;
         font-size: 15px !important;
-        font-weight: 600 !important;
-        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3) !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.2px !important;
+        box-shadow: 0 4px 12px rgba(29, 78, 216, 0.35) !important;
         cursor: pointer !important;
+        text-decoration: none !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+      .btn-secondary, 
+      .singlebutton button.btn-secondary, 
+      .singlebutton input.btn-secondary,
+      .quizsummarybtns .btn-secondary {
+        background: ${isDark ? '#27272a' : '#f1f5f9'} !important;
+        color: ${isDark ? '#f4f4f5' : '#09090b'} !important;
+        border: 1.5px solid ${isDark ? '#52525b' : '#cbd5e1'} !important;
+        border-radius: 8px !important;
+        padding: 11px 22px !important;
+        font-size: 14px !important;
+        font-weight: 600 !important;
+        cursor: pointer !important;
+        text-decoration: none !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
       }
       .ai-recommended-option {
         border: 2px solid #10b981 !important;
