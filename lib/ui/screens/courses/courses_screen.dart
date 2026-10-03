@@ -89,34 +89,42 @@ class CoursesScreen extends ConsumerWidget {
 
           // Course List
           Expanded(
-            child: coursesState.isLoading && coursesState.allCourses.isEmpty
-                ? const Center(child: CircularProgressIndicator())
-                : RefreshIndicator(
-                    onRefresh: () =>
-                        ref.read(coursesProvider.notifier).loadCourses(forceRefresh: true),
-                    child: coursesState.filteredCourses.isEmpty
-                        ? ListView(
-                            children: const [
-                              SizedBox(height: 80),
-                              Center(
-                                child: Text('No courses match your search or filter.'),
-                              ),
-                            ],
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            itemCount: coursesState.filteredCourses.length,
-                            itemBuilder: (context, index) {
-                              final course = coursesState.filteredCourses[index];
-                              return SlideScrollItem(
-                                key: ValueKey('course_${course.id}'),
-                                index: index,
-                                direction: SlideDirection.up,
-                                child: _CourseCard(course: course),
-                              );
-                            },
-                          ),
-                  ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              child: coursesState.isLoading && coursesState.allCourses.isEmpty
+                  ? const Center(key: ValueKey('loading'), child: CircularProgressIndicator())
+                  : RefreshIndicator(
+                      key: ValueKey('list_${coursesState.filter}_${coursesState.searchQuery.isNotEmpty}'),
+                      onRefresh: () =>
+                          ref.read(coursesProvider.notifier).loadCourses(forceRefresh: true),
+                      child: coursesState.filteredCourses.isEmpty
+                          ? ListView(
+                              key: const ValueKey('empty_courses'),
+                              children: const [
+                                SizedBox(height: 80),
+                                Center(
+                                  child: Text('No courses match your search or filter.'),
+                                ),
+                              ],
+                            )
+                          : ListView.builder(
+                              key: const ValueKey('populated_courses'),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              itemCount: coursesState.filteredCourses.length,
+                              itemBuilder: (context, index) {
+                                final course = coursesState.filteredCourses[index];
+                                return SlideScrollItem(
+                                  key: ValueKey('course_${course.id}'),
+                                  index: index,
+                                  direction: SlideDirection.up,
+                                  child: _CourseCard(course: course),
+                                );
+                              },
+                            ),
+                    ),
+            ),
           ),
         ],
       ),
@@ -143,7 +151,9 @@ class _FilterChip extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeInOut,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
           color: isSelected
@@ -200,18 +210,24 @@ class _CourseCard extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: badgeColor.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      badgeLabel,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: badgeColor,
+                  Hero(
+                    tag: 'course_badge_${course.id}',
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: badgeColor.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          badgeLabel,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: badgeColor,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -227,15 +243,21 @@ class _CourseCard extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              Text(
-                course.cleanTitle,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  height: 1.3,
+              Hero(
+                tag: 'course_title_${course.id}',
+                child: Material(
+                  color: Colors.transparent,
+                  child: Text(
+                    course.cleanTitle,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      height: 1.3,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 14),
               Row(

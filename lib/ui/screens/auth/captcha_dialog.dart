@@ -126,17 +126,12 @@ class _CaptchaDialogState extends State<CaptchaDialog> {
           onPressed: widget.onCancel,
           child: const Text('Cancel'),
         ),
-        ElevatedButton(
+        FilledButton(
           onPressed: () {
             if (_controller.text.trim().isNotEmpty) {
               widget.onSubmit(_controller.text.trim());
             }
           },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: theme.primaryColor,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
           child: const Text('Verify & Continue'),
         ),
       ],

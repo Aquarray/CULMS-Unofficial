@@ -259,7 +259,7 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
                       const SizedBox(height: 12),
                       const Text('Failed to load PDF preview'),
                       const SizedBox(height: 12),
-                      ElevatedButton(
+                      FilledButton(
                         onPressed: _downloadAndCachePdf,
                         child: const Text('Retry'),
                       ),

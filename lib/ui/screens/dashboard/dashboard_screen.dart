@@ -270,51 +270,58 @@ class DashboardScreen extends ConsumerWidget {
               ),
             ),
 
-            if (dashboardData.isLoading && dashboardData.events.isEmpty)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32.0),
-                  child: CircularProgressIndicator(),
-                ),
-              )
-            else if (dashboardData.events.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(32.0),
-                child: Center(
-                  child: Column(
-                    children: [
-                      Icon(Icons.check_circle_outline_rounded, size: 40, color: Colors.grey),
-                      SizedBox(height: 8),
-                      Text('All caught up! No upcoming deadlines.'),
-                    ],
-                  ),
-                ),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: [
-                    for (int idx = 0; idx < dashboardData.events.length; idx++) ...[
-                      if (idx > 0) const SizedBox(height: 10),
-                      SlideScrollItem(
-                        key: ValueKey('dash_event_${dashboardData.events[idx].id}_${dashboardData.events[idx].timesort}'),
-                        index: idx,
-                        direction: SlideDirection.up,
-                        child: _EventCard(
-                          event: dashboardData.events[idx],
-                          onActionTap: dashboardData.events[idx].actionUrl != null
-                              ? () => _handleEventTap(context, dashboardData.events[idx])
-                              : null,
-                          onCardTap: dashboardData.events[idx].actionUrl != null
-                              ? () => _handleEventTap(context, dashboardData.events[idx])
-                              : null,
-                        ),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              child: dashboardData.isLoading && dashboardData.events.isEmpty
+                  ? const Center(
+                      key: ValueKey('timeline_loading'),
+                      child: Padding(
+                        padding: EdgeInsets.all(32.0),
+                        child: CircularProgressIndicator(),
                       ),
-                    ],
-                  ],
-                ),
-              ),
+                    )
+                  : dashboardData.events.isEmpty
+                      ? const Padding(
+                          key: ValueKey('timeline_empty'),
+                          padding: EdgeInsets.all(32.0),
+                          child: Center(
+                            child: Column(
+                              children: [
+                                Icon(Icons.check_circle_outline_rounded, size: 40, color: Colors.grey),
+                                SizedBox(height: 8),
+                                Text('All caught up! No upcoming deadlines.'),
+                              ],
+                            ),
+                          ),
+                        )
+                      : Padding(
+                          key: ValueKey('timeline_events_${dashboardData.events.length}'),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            children: [
+                              for (int idx = 0; idx < dashboardData.events.length; idx++) ...[
+                                if (idx > 0) const SizedBox(height: 10),
+                                SlideScrollItem(
+                                  key: ValueKey('dash_event_${dashboardData.events[idx].id}_${dashboardData.events[idx].timesort}'),
+                                  index: idx,
+                                  direction: SlideDirection.up,
+                                  child: _EventCard(
+                                    event: dashboardData.events[idx],
+                                    onActionTap: dashboardData.events[idx].actionUrl != null
+                                        ? () => _handleEventTap(context, dashboardData.events[idx])
+                                        : null,
+                                    onCardTap: dashboardData.events[idx].actionUrl != null
+                                        ? () => _handleEventTap(context, dashboardData.events[idx])
+                                        : null,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+            ),
           ],
         ),
       ),
@@ -345,9 +352,23 @@ class _StatCard extends StatelessWidget {
           children: [
             Icon(icon, color: color, size: 20),
             const SizedBox(height: 10),
-            Text(
-              value,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.2),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
+              ),
+              child: Text(
+                value,
+                key: ValueKey(value),
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
             ),
             const SizedBox(height: 2),
             Text(
@@ -444,11 +465,9 @@ class _EventCard extends StatelessWidget {
                     ],
                   ),
                   if (event.actionName != null && onActionTap != null)
-                    ElevatedButton(
+                    FilledButton.tonal(
                       onPressed: onActionTap,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.primaryColor,
-                        foregroundColor: Colors.white,
+                      style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 6),
                         minimumSize: Size.zero,

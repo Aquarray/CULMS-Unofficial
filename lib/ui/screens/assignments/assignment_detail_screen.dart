@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
-import '../../../data/models/assignment.dart';
 import '../../../providers/app_providers.dart';
 import '../../../providers/assignment_provider.dart';
 import '../browser/app_browser_screen.dart';
@@ -659,14 +657,17 @@ class AssignmentDetailScreen extends ConsumerWidget {
                   detail.submittedFiles.isNotEmpty
                       ? Icons.edit_document
                       : Icons.cloud_upload_rounded,
+                  color: Colors.white,
                 ),
                 label: Text(
                   detail.submittedFiles.isNotEmpty
                       ? 'Edit / Replace Submission'
                       : 'Add Submission',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 ),
                 style: FilledButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),

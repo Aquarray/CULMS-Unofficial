@@ -106,7 +106,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
               ),
             ),
             const SizedBox(height: 16),
-            ElevatedButton(
+            FilledButton(
               onPressed: () {
                 ref.read(settingsProvider.notifier).updateSsoGatewayUrl(urlCtrl.text.trim());
                 ref.read(settingsProvider.notifier).updateSsoApiToken(tokenCtrl.text.trim());
@@ -115,12 +115,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
                   const SnackBar(content: Text('Gateway configuration saved')),
                 );
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).primaryColor,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
               child: const Text('Save Settings'),
             ),
           ],
@@ -339,20 +333,39 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
                           ],
 
                           // Login Submit Button
-                          ElevatedButton(
+                          FilledButton(
                             onPressed: isProcessing ? null : _handleLogin,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: theme.primaryColor,
-                              foregroundColor: Colors.white,
+                            style: FilledButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              elevation: 0,
                             ),
-                            child: Text(
-                              isProcessing ? 'Authorizing...' : 'Sign In with SSO',
-                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 220),
+                              child: isProcessing
+                                  ? const Row(
+                                      key: ValueKey('auth_loading'),
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        SizedBox(width: 10),
+                                        Text(
+                                          'Authorizing...',
+                                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                                        ),
+                                      ],
+                                    )
+                                  : const Text(
+                                      'Sign In with SSO',
+                                      key: ValueKey('auth_idle'),
+                                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                                    ),
                             ),
                           ),
                         ],

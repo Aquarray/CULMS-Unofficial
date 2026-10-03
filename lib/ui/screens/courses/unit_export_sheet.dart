@@ -108,7 +108,6 @@ class _UnitExportSheetState extends ConsumerState<UnitExportSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final items = _extractDownloadableItems();
     final settings = ref.watch(settingsProvider);
 
@@ -270,15 +269,12 @@ class _UnitExportSheetState extends ConsumerState<UnitExportSheet> {
             const SizedBox(height: 16),
           ],
 
-          ElevatedButton.icon(
+          FilledButton.icon(
             onPressed: _isExporting ? null : _startExport,
             icon: const Icon(Icons.download_rounded, size: 18),
             label: Text(_isExporting ? 'Exporting...' : 'Generate & Export ZIP'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.primaryColor,
-              foregroundColor: Colors.white,
+            style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
         ],

@@ -88,7 +88,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Cancel'),
           ),
-          ElevatedButton(
+          FilledButton(
             onPressed: () {
               ref.read(settingsProvider.notifier).updateSsoGatewayUrl(urlCtrl.text.trim());
               ref.read(settingsProvider.notifier).updateSsoApiToken(tokenCtrl.text.trim());
@@ -525,28 +525,42 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 children: [
                   const Text('App Theme Mode', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                   const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
+                  Row(
                     children: [
-                      ChoiceChip(
-                        label: const Text('System'),
-                        selected: settings.themeMode == AppThemeMode.system,
-                        onSelected: (_) => settingsNotifier.updateThemeMode(AppThemeMode.system),
+                      _ThemeOptionTile(
+                        icon: settings.themeMode == AppThemeMode.system
+                            ? Icons.brightness_auto_rounded
+                            : Icons.brightness_auto_outlined,
+                        label: 'System',
+                        isSelected: settings.themeMode == AppThemeMode.system,
+                        onTap: () => settingsNotifier.updateThemeMode(AppThemeMode.system),
                       ),
-                      ChoiceChip(
-                        label: const Text('Light'),
-                        selected: settings.themeMode == AppThemeMode.light,
-                        onSelected: (_) => settingsNotifier.updateThemeMode(AppThemeMode.light),
+                      const SizedBox(width: 8),
+                      _ThemeOptionTile(
+                        icon: settings.themeMode == AppThemeMode.light
+                            ? Icons.light_mode_rounded
+                            : Icons.light_mode_outlined,
+                        label: 'Light',
+                        isSelected: settings.themeMode == AppThemeMode.light,
+                        onTap: () => settingsNotifier.updateThemeMode(AppThemeMode.light),
                       ),
-                      ChoiceChip(
-                        label: const Text('Dark'),
-                        selected: settings.themeMode == AppThemeMode.dark,
-                        onSelected: (_) => settingsNotifier.updateThemeMode(AppThemeMode.dark),
+                      const SizedBox(width: 8),
+                      _ThemeOptionTile(
+                        icon: settings.themeMode == AppThemeMode.dark
+                            ? Icons.dark_mode_rounded
+                            : Icons.dark_mode_outlined,
+                        label: 'Dark',
+                        isSelected: settings.themeMode == AppThemeMode.dark,
+                        onTap: () => settingsNotifier.updateThemeMode(AppThemeMode.dark),
                       ),
-                      ChoiceChip(
-                        label: const Text('AMOLED Black'),
-                        selected: settings.themeMode == AppThemeMode.amoled,
-                        onSelected: (_) => settingsNotifier.updateThemeMode(AppThemeMode.amoled),
+                      const SizedBox(width: 8),
+                      _ThemeOptionTile(
+                        icon: settings.themeMode == AppThemeMode.amoled
+                            ? Icons.contrast_rounded
+                            : Icons.contrast_outlined,
+                        label: 'AMOLED',
+                        isSelected: settings.themeMode == AppThemeMode.amoled,
+                        onTap: () => settingsNotifier.updateThemeMode(AppThemeMode.amoled),
                       ),
                     ],
                   ),
@@ -557,7 +571,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 16),
 
           // Section: Medium-style Typography & Reading
-          _SectionHeader(title: 'Typography & Reader (Medium-Style)', icon: Icons.text_fields_rounded),
+          _SectionHeader(title: 'Typography & Reader (Medium-Style)', icon: Icons.text_fields_outlined),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -658,7 +672,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 16),
 
           // Section: Voice & Text-to-Audio Settings
-          _SectionHeader(title: 'Voice & Text-to-Audio (Read Aloud)', icon: Icons.record_voice_over_rounded),
+          _SectionHeader(title: 'Voice & Text-to-Audio (Read Aloud)', icon: Icons.record_voice_over_outlined),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -765,7 +779,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 16),
 
           // Section: Content Caching & Offline
-          _SectionHeader(title: 'Content Caching & Performance', icon: Icons.cached_rounded),
+          _SectionHeader(title: 'Content Caching & Performance', icon: Icons.cached_outlined),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -807,7 +821,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 16),
 
           // Section: SSO Gateway & API Token
-          _SectionHeader(title: 'SSO Gateway & Cloud Proxy', icon: Icons.vpn_lock_rounded),
+          _SectionHeader(title: 'SSO Gateway & Cloud Proxy', icon: Icons.vpn_lock_outlined),
           Card(
             child: ListTile(
               title: const Text('Configure SSO Proxy', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
@@ -822,7 +836,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 16),
 
           // Section: Diagnostics & Debug Logs
-          _SectionHeader(title: 'Diagnostics & System Logs', icon: Icons.terminal_rounded),
+          _SectionHeader(title: 'Diagnostics & System Logs', icon: Icons.terminal_outlined),
           Card(
             child: ListTile(
               leading: Container(
@@ -850,7 +864,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 16),
 
           // Section: Notifications & Alarms
-          _SectionHeader(title: 'Quiz & Assignment Alarms', icon: Icons.alarm_rounded),
+          _SectionHeader(title: 'Quiz & Assignment Alarms', icon: Icons.alarm_outlined),
           Card(
             child: Column(
               children: [
@@ -967,7 +981,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 16),
 
           // Section: AI Study & Export Settings
-          _SectionHeader(title: 'AI & Unit Utilities', icon: Icons.auto_awesome_rounded),
+          _SectionHeader(title: 'AI & Unit Utilities', icon: Icons.auto_awesome_outlined),
           Card(
             child: Column(
               children: [
@@ -992,7 +1006,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 16),
 
           // Section: AI Quiz Assistant (In-App Browser)
-          _SectionHeader(title: 'AI Quiz Assistant (In-App Browser)', icon: Icons.psychology_rounded),
+          _SectionHeader(title: 'AI Quiz Assistant (In-App Browser)', icon: Icons.psychology_outlined),
           Card(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1029,22 +1043,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    child: Wrap(
-                      spacing: 8,
-                      children: [
-                        ChoiceChip(
-                          avatar: const Icon(Icons.auto_awesome, size: 16),
-                          label: const Text('Google Gemini'),
-                          selected: settings.quizAiProvider == QuizAiProvider.gemini,
-                          onSelected: (_) => settingsNotifier.updateQuizAiProvider(QuizAiProvider.gemini),
-                        ),
-                        ChoiceChip(
-                          avatar: const Icon(Icons.bolt_rounded, size: 16),
-                          label: const Text('OpenAI (ChatGPT)'),
-                          selected: settings.quizAiProvider == QuizAiProvider.openAi,
-                          onSelected: (_) => settingsNotifier.updateQuizAiProvider(QuizAiProvider.openAi),
-                        ),
-                      ],
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<QuizAiProvider>(
+                        segments: const [
+                          ButtonSegment(
+                            value: QuizAiProvider.gemini,
+                            icon: Icon(Icons.auto_awesome, size: 16),
+                            label: Text('Google Gemini'),
+                          ),
+                          ButtonSegment(
+                            value: QuizAiProvider.openAi,
+                            icon: Icon(Icons.bolt_rounded, size: 16),
+                            label: Text('OpenAI (ChatGPT)'),
+                          ),
+                        ],
+                        selected: {settings.quizAiProvider},
+                        onSelectionChanged: (newSelection) {
+                          settingsNotifier.updateQuizAiProvider(newSelection.first);
+                        },
+                      ),
                     ),
                   ),
                   const Divider(height: 16),
@@ -1139,13 +1157,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            ElevatedButton.icon(
+            FilledButton.tonalIcon(
               onPressed: () => ref.read(authProvider.notifier).logout(),
               icon: const Icon(Icons.logout_rounded, size: 18),
               label: const Text('Sign Out'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red.withValues(alpha: 0.1),
-                foregroundColor: Colors.red,
+              style: FilledButton.styleFrom(
+                backgroundColor: theme.colorScheme.errorContainer,
+                foregroundColor: theme.colorScheme.onErrorContainer,
                 elevation: 0,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1423,3 +1441,73 @@ class _ModelTestDialogState extends State<_ModelTestDialog> {
     );
   }
 }
+
+class _ThemeOptionTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _ThemeOptionTile({
+    required this.icon,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? theme.colorScheme.primary.withValues(alpha: isDark ? 0.22 : 0.12)
+                : (isDark ? const Color(0xFF14171A) : const Color(0xFFF1F5F9)),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected
+                  ? theme.colorScheme.primary
+                  : (isDark ? const Color(0xFF2A2E35) : const Color(0xFFE2E8F0)),
+              width: isSelected ? 1.5 : 1.0,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 20,
+                color: isSelected
+                    ? theme.colorScheme.primary
+                    : (isDark ? Colors.white70 : const Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : (isDark ? Colors.white70 : const Color(0xFF475569)),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+

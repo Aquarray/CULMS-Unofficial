@@ -12,6 +12,7 @@ import '../reader/markdown_viewer_screen.dart';
 import '../reader/pdf_viewer_screen.dart';
 import 'unit_export_sheet.dart';
 import 'ai_study_prompt_sheet.dart';
+import '../../common/slide_scroll_item.dart';
 
 class CourseDetailScreen extends ConsumerStatefulWidget {
   final Course course;
@@ -320,34 +321,46 @@ $cleanText
                               ),
                             ),
                             const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: widget.course.isContentCourse
-                                    ? const Color(0xFF3B82F6).withValues(alpha: 0.15)
-                                    : const Color(0xFFF59E0B).withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                widget.course.isContentCourse ? '📘 Study Material' : '📝 Tests & MSTs',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: widget.course.isContentCourse
-                                      ? const Color(0xFF3B82F6)
-                                      : const Color(0xFFD97706),
+                            Hero(
+                              tag: 'course_badge_${widget.course.id}',
+                              child: Material(
+                                color: Colors.transparent,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: widget.course.isContentCourse
+                                        ? const Color(0xFF3B82F6).withValues(alpha: 0.15)
+                                        : const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    widget.course.isContentCourse ? '📘 Study Material' : '📝 Tests & MSTs',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: widget.course.isContentCourse
+                                          ? const Color(0xFF3B82F6)
+                                          : const Color(0xFFD97706),
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 10),
-                        Text(
-                          widget.course.cleanTitle,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            height: 1.3,
+                        Hero(
+                          tag: 'course_title_${widget.course.id}',
+                          child: Material(
+                            color: Colors.transparent,
+                            child: Text(
+                              widget.course.cleanTitle,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                height: 1.3,
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -451,7 +464,7 @@ $cleanText
                         const SizedBox(height: 12),
                         Text('Failed to load course materials: $err', textAlign: TextAlign.center),
                         const SizedBox(height: 12),
-                        ElevatedButton(
+                        FilledButton(
                           onPressed: _refreshMaterials,
                           child: const Text('Retry'),
                         ),
@@ -681,9 +694,13 @@ $cleanText
                               final groupKey = groupedUnits.keys.elementAt(groupIdx);
                               final groupSections = groupedUnits[groupKey]!;
 
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
+                              return SlideScrollItem(
+                                key: ValueKey('unit_group_${widget.course.id}_$groupKey'),
+                                index: groupIdx,
+                                direction: SlideDirection.up,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                   // Unit Group Header Divider
                                   Padding(
                                     padding: const EdgeInsets.only(top: 14.0, bottom: 8.0, left: 4),
@@ -800,8 +817,9 @@ $cleanText
                                     );
                                   }),
                                 ],
-                              );
-                            },
+                              ),
+                            );
+                          },
                             childCount: groupedUnits.length,
                           ),
                         ),
@@ -902,49 +920,63 @@ $cleanText
       ),
       trailing: isUrl
           ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFF0EA5E9).withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(6),
+                color: isDark ? const Color(0xFF0284C7) : const Color(0xFF0369A1),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Join Link', style: TextStyle(fontSize: 11, color: Color(0xFF0EA5E9), fontWeight: FontWeight.w600)),
+                  Text('Join Link', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
                   SizedBox(width: 4),
-                  Icon(Icons.launch_rounded, size: 12, color: Color(0xFF0EA5E9)),
+                  Icon(Icons.launch_rounded, size: 12, color: Colors.white),
                 ],
               ),
             )
           : (isQuiz
               ? Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(6),
+                    color: isDark ? const Color(0xFF7C3AED) : const Color(0xFF6D28D9),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF6D28D9).withValues(alpha: 0.3),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('Attempt Quiz', style: TextStyle(fontSize: 11, color: Color(0xFF8B5CF6), fontWeight: FontWeight.w600)),
+                      Text('Attempt Quiz', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
                       SizedBox(width: 4),
-                      Icon(Icons.arrow_forward_rounded, size: 12, color: Color(0xFF8B5CF6)),
+                      Icon(Icons.arrow_forward_rounded, size: 12, color: Colors.white),
                     ],
                   ),
                 )
               : (isAssign
                   ? Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
+                        color: isDark ? const Color(0xFFD97706) : const Color(0xFFB45309),
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFD97706).withValues(alpha: 0.3),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
                       ),
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('View Task', style: TextStyle(fontSize: 11, color: Color(0xFFF59E0B), fontWeight: FontWeight.w600)),
+                          Text('View Task', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
                           SizedBox(width: 4),
-                          Icon(Icons.arrow_forward_rounded, size: 12, color: Color(0xFFF59E0B)),
+                          Icon(Icons.arrow_forward_rounded, size: 12, color: Colors.white),
                         ],
                       ),
                     )
@@ -975,13 +1007,13 @@ $cleanText
 
   IconData _getUnitIcon(CourseUnit unit) {
     if (unit.isSurpriseTest) return Icons.bolt_rounded;
-    if (unit.isQuiz) return Icons.quiz_rounded;
-    if (unit.isLiveSessions) return Icons.videocam_rounded;
-    if (unit.isAssessmentModel) return Icons.fact_check_rounded;
-    if (unit.isAssignment) return Icons.assignment_turned_in_rounded;
-    if (unit.isPractical) return Icons.science_rounded;
+    if (unit.isQuiz) return Icons.quiz_outlined;
+    if (unit.isLiveSessions) return Icons.videocam_outlined;
+    if (unit.isAssessmentModel) return Icons.fact_check_outlined;
+    if (unit.isAssignment) return Icons.assignment_outlined;
+    if (unit.isPractical) return Icons.science_outlined;
     if (unit.isOverview) return Icons.info_outline_rounded;
-    return Icons.article_rounded;
+    return Icons.article_outlined;
   }
 
   Widget _getActivityIcon(String iconType) {
@@ -1025,7 +1057,9 @@ class _CategoryChip extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(18),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
           color: isSelected

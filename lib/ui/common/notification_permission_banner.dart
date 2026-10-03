@@ -95,9 +95,9 @@ class _NotificationPermissionBannerState extends ConsumerState<NotificationPermi
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    ElevatedButton(
+                    FilledButton(
                       onPressed: _requestPermission,
-                      style: ElevatedButton.styleFrom(
+                      style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFFD97706),
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
