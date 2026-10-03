@@ -272,24 +272,6 @@ dart run bin/test_fetch.dart
 dart run bin/test_fetch.dart --session <MoodleSessionCookie> --sesskey <sesskey>
 ```
 
----
-
-## ⚠️ Engineering Review & Flagged Uncertainties
-
-During analysis of this codebase, the following items were identified for awareness and ongoing maintenance:
-
-1. **Vercel Serverless SSO Gateway Dependency**:
-   - The initial authentication stage relies on `https://lmssso.vercel.app/api/sso` with a default Bearer token (`dont_use_please`).
-   - If the Vercel deployment experience rate limits, cold-start timeouts (>40s), or is taken offline, users will not be able to authenticate unless they configure a custom endpoint in **Settings -> SSO Gateway Configuration**.
-2. **Moodle Web & AJAX DOM Selectors**:
-   - Features like the Assignment Details Scraper, File Uploader, and AI Quiz Assistant parse specific Moodle HTML class names (`.que.multichoice`, `.qtext`, `.generaltable`, etc.).
-   - If Chandigarh University updates Moodle core or adopts a substantially different custom web theme, these DOM selectors may need maintenance.
-3. **Moodle Session Lifespan**:
-   - Moodle server sessions typically expire after 2–4 hours of inactivity. The app includes session validation on launch, but active sessions may occasionally require re-authentication if left idle for extended periods.
-4. **Third-Party AI API Keys**:
-   - The Quiz AI Assistant requires a personal Google Gemini API key or OpenAI API key entered by the user in Settings. No keys are hardcoded in the codebase.
-5. **iOS Native Setup**:
-   - The codebase has been verified on Android and Linux desktop. For iOS builds, notification permissions and `pdfrx` native framework dependencies must be configured in `ios/Runner/Info.plist` and CocoaPods.
 
 ---
 
