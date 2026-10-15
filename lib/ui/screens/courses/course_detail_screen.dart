@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/course.dart';
 import '../../../data/models/course_content.dart';
+import '../../../data/network/lms_content_parser.dart';
 import '../../../providers/app_providers.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/course_provider.dart';
@@ -37,7 +38,8 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
 
   void _openActivity(CourseActivity activity) async {
     // 1. Direct Web / Live Session Links: launch in-app browser with cookies
-    if (activity.iconType == 'url' || activity.url.contains('mod/url')) {
+    if ((activity.iconType == 'url' || activity.url.contains('mod/url')) &&
+        !LmsContentParser.isPdfUrl(activity.url)) {
       AppBrowserScreen.open(
         context,
         url: activity.url,
@@ -119,21 +121,14 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
       } else if (content.type == LmsItemType.folderDirectory) {
         _showFolderSheet(content);
       } else if (content.type == LmsItemType.pageContent) {
-        final cleanText = (content.pageBodyHtml ?? '')
-            .replaceAll(RegExp(r'<[^>]*>'), ' ')
-            .replaceAll(RegExp(r'\s+'), ' ')
-            .trim();
-
-        final md = '''# ${content.pageTitle}
-
-$cleanText
-''';
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => MarkdownViewerScreen(
               title: content.pageTitle,
-              markdownContent: md,
+              markdownContent: '',
+              htmlContent: content.pageBodyHtml ?? '',
+              sourceUrl: content.originalUrl ?? activity.url,
             ),
           ),
         );

@@ -13,6 +13,7 @@ import '../models/calendar_event.dart';
 import '../models/course.dart';
 import '../models/course_content.dart';
 import '../models/sso_progress.dart';
+import 'lms_content_parser.dart';
 
 class LmsApiClient {
   final Dio dio;
@@ -1067,7 +1068,7 @@ class LmsApiClient {
     required String url,
     required AuthSession session,
   }) async {
-    final cacheKey = 'extracted_$url';
+    final cacheKey = 'extracted_v2_$url';
     final cacheGeneration = cacheService.generation;
     final cached = await cacheService.getJson<Map<String, dynamic>>(cacheKey,
       accountId: session.uid,);
@@ -1075,115 +1076,40 @@ class LmsApiClient {
       return LmsExtractedContent.fromJson(cached);
     }
 
-    final response = await dio.get<String>(
+    // PDF links can point straight at a file, without a Moodle HTML viewer.
+    if (LmsContentParser.isPdfUrl(url)) {
+      return LmsContentParser.pdf(url);
+    }
+
+    final response = await dio.get<List<int>>(
       url,
       options: Options(
+        responseType: ResponseType.bytes,
         headers: {
           'Cookie': 'MoodleSession=${session.moodleSession}',
           'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36',
         },
       ),
     );
-
-    final html = response.data ?? '';
-    final doc = html_parser.parse(html);
-
-    final pageTitle = doc.querySelector('.page-header-headings h1')?.text.trim() ??
-        doc.querySelector('h1, h2')?.text.trim() ??
-        'Course Content';
-
-    // 1. Check for Single Document Viewer (PPT/PDF/Office Viewer)
-    final viewerIframe = doc.querySelector('iframe#resourceobject');
-    if (viewerIframe != null) {
-      final viewerUrl = viewerIframe.attributes['src'];
-      final downloadUrl = doc.querySelector('a.btn-primary[download], a.btn[download]')?.attributes['href'];
-      final fileName = doc.querySelector('.local-officeviewer-filename')?.text.trim() ?? pageTitle;
-
-      String fileType = 'pdf';
-      if (fileName.toLowerCase().endsWith('.pptx') || fileName.toLowerCase().endsWith('.ppt')) {
-        fileType = 'pptx';
-      } else if (fileName.toLowerCase().endsWith('.docx') || fileName.toLowerCase().endsWith('.doc')) {
-        fileType = 'docx';
-      } else if (fileName.toLowerCase().endsWith('.pdf')) {
-        fileType = 'pdf';
-      }
-
-      final content = LmsExtractedContent(
-        pageTitle: pageTitle,
-        type: LmsItemType.singleDocument,
-        originalUrl: url,
-        items: [
-          LmsContentItem(
-            name: fileName,
-            viewerUrl: viewerUrl,
-            downloadUrl: downloadUrl,
-            fileType: fileType,
-          ),
-        ],
-      );
-
-      await cacheService.putJson(cacheKey, content.toJson(),
-        accountId: session.uid,
-        expectedGeneration: cacheGeneration,);
-      return content;
+    final bytes = response.data ?? [];
+    final mime = response.headers.value('content-type')?.split(';').first.trim().toLowerCase();
+    final hasPdfSignature = bytes.length >= 5 &&
+        bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46 && bytes[4] == 0x2d;
+    final resolvedUrl = response.realUri.toString();
+    late final LmsExtractedContent content;
+    if (mime == 'application/pdf' || hasPdfSignature) {
+      content = LmsContentParser.pdf(resolvedUrl);
+      final filename = '${content.pageTitle.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}.pdf';
+      await cacheService.saveFile(filename, bytes,
+        sourceUrl: resolvedUrl, accountId: session.uid,
+        expectedGeneration: cacheGeneration);
+    } else {
+      final html = utf8.decode(bytes, allowMalformed: true);
+      _checkSessionExpiry(html);
+      content = LmsContentParser.parseHtml(html, url: resolvedUrl);
     }
-
-    // 2. Check for Folder View (#folder_tree0)
-    final folderTree = doc.querySelector('#folder_tree0, .filemanager, .box.generalbox',);
-    if (folderTree != null) {
-      final fileNodes = folderTree.querySelectorAll('.fp-filename a, a.aalink');
-      final items = <LmsContentItem>[];
-
-      for (final node in fileNodes) {
-        final href = node.attributes['href'] ?? '';
-        final text = node.text.trim();
-        if (href.isNotEmpty && text.isNotEmpty) {
-          final iconNode = node.parent?.parent?.querySelector('.fp-icon img, img',);
-          final iconSrc = iconNode?.attributes['src'] ?? '';
-
-          String fileType = 'unknown';
-          if (iconSrc.contains('/f/document') || text.endsWith('.docx') || text.endsWith('.doc')) {
-            fileType = 'docx';
-          } else if (iconSrc.contains('/f/powerpoint') || text.endsWith('.pptx') || text.endsWith('.ppt')) {
-            fileType = 'pptx';
-          } else if (iconSrc.contains('/f/pdf') || text.endsWith('.pdf')) {
-            fileType = 'pdf';
-          }
-
-          items.add(LmsContentItem(
-            name: text,
-            downloadUrl: href,
-            fileType: fileType),);
-        }
-      }
-
-      if (items.isNotEmpty) {
-        final content = LmsExtractedContent(
-          pageTitle: pageTitle,
-          type: LmsItemType.folderDirectory,
-          items: items,
-          originalUrl: url,
-        );
-        await cacheService.putJson(cacheKey, content.toJson(),
-          accountId: session.uid,
-          expectedGeneration: cacheGeneration,);
-        return content;
-      }
-    }
-
-    // 3. Page content / Markdown or HTML view
-    final pageBody = doc.querySelector('.generalbox, #region-main .content, role=main',);
-    final content = LmsExtractedContent(
-      pageTitle: pageTitle,
-      type: LmsItemType.pageContent,
-      items: [],
-      pageBodyHtml: pageBody?.innerHtml,
-      originalUrl: url,
-    );
-
     await cacheService.putJson(cacheKey, content.toJson(),
-      accountId: session.uid,
-      expectedGeneration: cacheGeneration,);
+      accountId: session.uid, expectedGeneration: cacheGeneration);
     return content;
   }
 

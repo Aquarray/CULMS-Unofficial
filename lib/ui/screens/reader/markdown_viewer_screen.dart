@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/tts_service.dart';
+import '../../../core/services/reading_html_service.dart';
+import 'html_reading_view.dart';
 import '../../../core/theme/reading_theme.dart';
 import '../../../data/models/app_settings.dart';
 import '../../../providers/settings_provider.dart';
@@ -9,11 +12,15 @@ import '../../../providers/settings_provider.dart';
 class MarkdownViewerScreen extends ConsumerStatefulWidget {
   final String title;
   final String markdownContent;
+  final String? htmlContent;
+  final String? sourceUrl;
 
   const MarkdownViewerScreen({
     super.key,
     required this.title,
     required this.markdownContent,
+    this.htmlContent,
+    this.sourceUrl,
   });
 
   @override
@@ -25,6 +32,21 @@ class _MarkdownViewerScreenState extends ConsumerState<MarkdownViewerScreen> {
   double _readingProgress = 0.0;
 
   bool _showAudioBar = false;
+
+  Future<void> _openInBrowser() async {
+    final uri = Uri.tryParse(widget.sourceUrl ?? '');
+    if (uri == null || !['http', 'https'].contains(uri.scheme)) return;
+    try {
+      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+    } catch (_) {}
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Could not open this lesson in your browser.')),
+    );
+  }
+
+  String get _readingText => widget.htmlContent == null
+      ? widget.markdownContent : ReadingHtmlService.plainText(widget.htmlContent!);
 
   @override
   void initState() {
@@ -57,12 +79,12 @@ class _MarkdownViewerScreenState extends ConsumerState<MarkdownViewerScreen> {
       _showAudioBar = !_showAudioBar;
     });
     if (_showAudioBar && ttsState.isStopped) {
-      ref.read(ttsProvider.notifier).speakMarkdown(widget.markdownContent);
+      ref.read(ttsProvider.notifier).speakMarkdown(_readingText);
     }
   }
 
   int _estimateReadTimeMinutes() {
-    final words = widget.markdownContent.split(RegExp(r'\s+')).length;
+    final words = _readingText.split(RegExp(r'\s+')).length;
     final minutes = (words / 200).ceil();
     return minutes < 1 ? 1 : minutes;
   }
@@ -278,6 +300,12 @@ class _MarkdownViewerScreenState extends ConsumerState<MarkdownViewerScreen> {
                 ),
               ),
               actions: [
+                if (widget.sourceUrl?.isNotEmpty == true)
+                  IconButton(
+                    icon: const Icon(Icons.open_in_browser_rounded),
+                    tooltip: 'Open in browser',
+                    onPressed: _openInBrowser,
+                  ),
                 Center(
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -331,7 +359,14 @@ class _MarkdownViewerScreenState extends ConsumerState<MarkdownViewerScreen> {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 750), // Optimal reading column width
-            child: Markdown(
+            child: widget.htmlContent != null && widget.sourceUrl != null
+                ? HtmlReadingView(
+                    html: widget.htmlContent!, sourceUrl: widget.sourceUrl!,
+                    onProgress: (progress) {
+                      if (mounted) setState(() => _readingProgress = progress);
+                    },
+                  )
+                : Markdown(
               controller: _scrollController,
               data: widget.markdownContent,
               selectable: true,
@@ -517,7 +552,7 @@ class _MarkdownViewerScreenState extends ConsumerState<MarkdownViewerScreen> {
                     } else if (ttsState.isPaused) {
                       ttsNotifier.resume();
                     } else {
-                      ttsNotifier.speakMarkdown(widget.markdownContent);
+                      ttsNotifier.speakMarkdown(_readingText);
                     }
                   },
                 ),
