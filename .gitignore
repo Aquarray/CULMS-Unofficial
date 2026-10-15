@@ -127,3 +127,4 @@ GoogleService-Info.plist
 *.har
 *.dump
 sample_quiz_page.html
+docs/

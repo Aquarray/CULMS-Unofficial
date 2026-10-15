@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/config/app_constants.dart';
 import '../../../data/models/calendar_event.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/course_provider.dart';
@@ -91,6 +92,17 @@ class DashboardScreen extends ConsumerWidget {
             onPressed: () {
               ref.read(dashboardProvider.notifier).loadDashboard(forceRefresh: true);
               ref.read(coursesProvider.notifier).loadCourses(forceRefresh: true);
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.language_rounded),
+            tooltip: 'Open in LMS Browser',
+            onPressed: () {
+              AppBrowserScreen.open(
+                context,
+                url: '${AppConstants.defaultLmsBaseUrl}/my/',
+                title: 'LMS Dashboard',
+              );
             },
           ),
         ],

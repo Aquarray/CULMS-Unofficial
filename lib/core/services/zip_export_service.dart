@@ -6,10 +6,29 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../data/models/app_settings.dart';
 import '../../data/models/course_content.dart';
 import 'cache_service.dart';
 
 typedef ProgressCallback = void Function(int current, int total, String status);
+
+class MaterialExportResult {
+  final bool isZip;
+  final File? zipFile;
+  final Directory? folder;
+  final int fileCount;
+  final String path;
+  final List<File> files;
+
+  MaterialExportResult({
+    required this.isZip,
+    this.zipFile,
+    this.folder,
+    required this.fileCount,
+    required this.path,
+    this.files = const [],
+  });
+}
 
 class _DownloadedFile {
   final String filename;
@@ -24,7 +43,7 @@ class ZipExportService {
 
   ZipExportService({
     required this.dio,
-    required this.cacheService,
+    required this.cacheService
   });
 
   /// Checks if downloaded bytes are an HTML text response instead of binary content.
@@ -73,7 +92,7 @@ class ZipExportService {
   }
 
   /// Resolves the proper file extension based on magic bytes and original name.
-  static String resolveExtension(List<int> bytes, {required String originalName}) {
+  static String resolveExtension(List<int> bytes, {required String originalName,}) {
     if (bytes.length >= 4) {
       // %PDF
       if (bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46) {
@@ -103,7 +122,7 @@ class ZipExportService {
   /// Converts HTML page body into clean Markdown text.
   static String htmlToMarkdown(String html, {required String title}) {
     final doc = html_parser.parse(html);
-    final mainContent = doc.querySelector('.generalbox, #region-main .content, role=main, .box.generalbox') ?? doc.body;
+    final mainContent = doc.querySelector('.generalbox, #region-main .content, role=main, .box.generalbox',) ?? doc.body;
 
     if (mainContent == null) {
       return '# $title\n';
@@ -191,6 +210,21 @@ class ZipExportService {
     }
   }
 
+  /// Resolves the dedicated CULMS destination folder (Downloads/CULMS on Android/Desktop).
+  Future<Directory> _getCulmsDirectory() async {
+    final baseDir = await _getDestinationDirectory();
+    final culmsDir = Directory('${baseDir.path}/CULMS');
+    if (!await culmsDir.exists()) {
+      try {
+        await culmsDir.create(recursive: true);
+        return culmsDir;
+      } catch (_) {
+        return baseDir;
+      }
+    }
+    return culmsDir;
+  }
+
   /// Fetches bytes while manually following redirects and preserving the MoodleSession Cookie.
   Future<Response<List<int>>?> _fetchBytesWithCookie(
     String initialUrl,
@@ -250,6 +284,8 @@ class ZipExportService {
   Future<List<_DownloadedFile>> _resolveAndDownloadItem(
     LmsContentItem item,
     String moodleSession,
+    String? accountId,
+    int cacheGeneration,
   ) async {
     if (item.downloadUrl == null || item.downloadUrl!.isEmpty) {
       return [];
@@ -257,17 +293,19 @@ class ZipExportService {
 
     // 1. Text reading page (mod/page or iconType == 'page')
     if (item.fileType == 'page' || item.downloadUrl!.contains('mod/page/view.php')) {
-      final pageResp = await _fetchBytesWithCookie(item.downloadUrl!, moodleSession);
+      final pageResp = await _fetchBytesWithCookie(item.downloadUrl!, moodleSession,);
       if (pageResp != null && pageResp.data != null && pageResp.data!.isNotEmpty) {
         final html = utf8.decode(pageResp.data!, allowMalformed: true);
         final md = htmlToMarkdown(html, title: item.name);
-        final sanitizedTitle = item.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-        return [_DownloadedFile(filename: '$sanitizedTitle.md', bytes: utf8.encode(md))];
+        final sanitizedTitle = item.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_',);
+        return [_DownloadedFile(filename: '$sanitizedTitle.md', bytes: utf8.encode(md),),];
       }
     }
 
     // 2. Check local cache first (if not HTML)
-    final cachedFile = await cacheService.getCachedFile(item.name);
+    final cachedFile = await cacheService.getCachedFile(item.name,
+      sourceUrl: item.downloadUrl,
+      accountId: accountId,);
     if (cachedFile != null) {
       final cachedBytes = await cachedFile.readAsBytes();
       if (!isHtml(cachedBytes)) {
@@ -276,7 +314,7 @@ class ZipExportService {
     }
 
     // 3. Fetch the URL (following redirects with MoodleSession intact)
-    final initialResp = await _fetchBytesWithCookie(item.downloadUrl!, moodleSession);
+    final initialResp = await _fetchBytesWithCookie(item.downloadUrl!, moodleSession,);
     final initialBytes = initialResp?.data;
     if (initialBytes == null || initialBytes.isEmpty) {
       return [];
@@ -289,7 +327,10 @@ class ZipExportService {
       if (!finalName.toLowerCase().endsWith('.$ext')) {
         finalName = '${finalName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '')}.$ext';
       }
-      await cacheService.saveFile(finalName, initialBytes);
+      await cacheService.saveFile(finalName, initialBytes,
+        sourceUrl: item.downloadUrl,
+        accountId: accountId,
+        expectedGeneration: cacheGeneration,);
       return [_DownloadedFile(filename: finalName, bytes: initialBytes)];
     }
 
@@ -311,7 +352,7 @@ class ZipExportService {
     }
 
     // Case A: Moodle Folder with multiple files (#folder_tree0 or .filemanager)
-    final folderFiles = doc.querySelectorAll('#folder_tree0 .fp-filename a, .filemanager .fp-filename a, .box.generalbox .fp-filename a');
+    final folderFiles = doc.querySelectorAll('#folder_tree0 .fp-filename a, .filemanager .fp-filename a, .box.generalbox .fp-filename a',);
     if (folderFiles.isNotEmpty) {
       final results = <_DownloadedFile>[];
       for (final node in folderFiles) {
@@ -336,7 +377,7 @@ class ZipExportService {
 
     // Case B: Direct download link for PPT / PPTX / DOCX / PDF
     // Check download button or pluginfile links
-    final downloadBtn = doc.querySelector('a.btn-primary[download], a.btn[download], a[download]');
+    final downloadBtn = doc.querySelector('a.btn-primary[download], a.btn[download], a[download]',);
     String? directFileUrl = downloadBtn?.attributes['href'];
 
     if (directFileUrl == null || directFileUrl.isEmpty) {
@@ -354,17 +395,18 @@ class ZipExportService {
     }
 
     if (directFileUrl == null || directFileUrl.isEmpty) {
-      final workaroundLink = doc.querySelector('.resourceworkaround a, #resourceobject a, a.aalink[href*="pluginfile"]');
+      final workaroundLink = doc.querySelector('.resourceworkaround a, #resourceobject a, a.aalink[href*="pluginfile"]',);
       directFileUrl = workaroundLink?.attributes['href'];
     }
 
     if (directFileUrl != null && directFileUrl.isNotEmpty) {
       var absoluteDirectUrl = makeAbsolute(directFileUrl);
       if (absoluteDirectUrl.contains('pluginfile.php') && !absoluteDirectUrl.contains('forcedownload=1')) {
-        absoluteDirectUrl += (absoluteDirectUrl.contains('?') ? '&' : '?') + 'forcedownload=1';
+        final separator = absoluteDirectUrl.contains('?') ? '&' : '?';
+        absoluteDirectUrl = '${absoluteDirectUrl}${separator}forcedownload=1';
       }
 
-      final directResp = await _fetchBytesWithCookie(absoluteDirectUrl, moodleSession);
+      final directResp = await _fetchBytesWithCookie(absoluteDirectUrl, moodleSession,);
       final directBytes = directResp?.data;
       if (directBytes != null && !isHtml(directBytes)) {
         // Prefer exact filename from download URL if available
@@ -377,23 +419,26 @@ class ZipExportService {
           resolvedName = '${resolvedName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '')}.$ext';
         }
 
-        await cacheService.saveFile(resolvedName, directBytes);
+        await cacheService.saveFile(resolvedName, directBytes,
+          sourceUrl: item.downloadUrl,
+          accountId: accountId,
+          expectedGeneration: cacheGeneration,);
         return [_DownloadedFile(filename: resolvedName, bytes: directBytes)];
       }
     }
 
     // Case C: OfficeViewer PDF stream fallback (when direct PPT download is blocked or unavailable)
-    final viewerIframe = doc.querySelector('iframe#resourceobject, iframe[src*="officeviewer"]');
+    final viewerIframe = doc.querySelector('iframe#resourceobject, iframe[src*="officeviewer"]',);
     String? viewerUrl = viewerIframe?.attributes['src'];
 
     if (viewerUrl == null) {
-      final objectViewer = doc.querySelector('object#resourceobject, object[data*="officeviewer"], object[data*="pdf"]');
+      final objectViewer = doc.querySelector('object#resourceobject, object[data*="officeviewer"], object[data*="pdf"]',);
       viewerUrl = objectViewer?.attributes['data'];
     }
 
     if (viewerUrl != null && viewerUrl.isNotEmpty) {
       final absoluteViewerUrl = makeAbsolute(viewerUrl);
-      final pdfResp = await _fetchBytesWithCookie(absoluteViewerUrl, moodleSession);
+      final pdfResp = await _fetchBytesWithCookie(absoluteViewerUrl, moodleSession,);
       final pdfBytes = pdfResp?.data;
 
       if (pdfBytes != null && !isHtml(pdfBytes)) {
@@ -403,110 +448,192 @@ class ZipExportService {
         // Change extension to .pdf since this is the converted PDF stream
         String pdfName = '${baseName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '')}.pdf';
 
-        await cacheService.saveFile(pdfName, pdfBytes);
+        await cacheService.saveFile(pdfName, pdfBytes,
+          sourceUrl: item.downloadUrl,
+          accountId: accountId,
+          expectedGeneration: cacheGeneration,);
         return [_DownloadedFile(filename: pdfName, bytes: pdfBytes)];
       }
     }
 
     // Case D: If it is a text document page, convert the HTML to clean Markdown
-    final pageBody = doc.querySelector('.generalbox, #region-main .content, role=main');
+    final pageBody = doc.querySelector('.generalbox, #region-main .content, role=main',);
     if (pageBody != null) {
       final md = htmlToMarkdown(htmlString, title: item.name);
       final sanitizedTitle = item.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-      return [_DownloadedFile(filename: '$sanitizedTitle.md', bytes: utf8.encode(md))];
+      return [_DownloadedFile(filename: '$sanitizedTitle.md', bytes: utf8.encode(md)),];
     }
 
     return [];
   }
 
-  Future<File?> exportUnitToZip({
+  /// Exports unit materials either as a packed ZIP archive or directly as an uncompressed folder in Downloads/CULMS/*
+  Future<MaterialExportResult> exportUnitMaterials({
     required String courseName,
     required String unitName,
     required List<LmsContentItem> items,
     required String moodleSession,
+    String? accountId,
+    MaterialExportFormat format = MaterialExportFormat.zip,
     ProgressCallback? onProgress,
     bool autoShare = true,
   }) async {
-    final validItems = items.where((item) => item.downloadUrl != null && item.downloadUrl!.isNotEmpty).toList();
+    final cacheGeneration = cacheService.generation;
+    final validItems = items.where((item) => item.downloadUrl != null && item.downloadUrl!.isNotEmpty,).toList();
     if (validItems.isEmpty) {
       throw Exception('No downloadable files found in this unit.');
     }
 
-    final archive = Archive();
+    final sanitizedCourse = courseName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_',);
+    final sanitizedUnit = unitName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    final culmsDir = await _getCulmsDirectory();
+
     final total = validItems.length;
+    final allDownloaded = <_DownloadedFile>[];
 
     for (int i = 0; i < total; i++) {
       final item = validItems[i];
       onProgress?.call(i + 1, total, 'Downloading ${item.name}...');
 
-      final downloadedFiles = await _resolveAndDownloadItem(item, moodleSession);
+      final downloadedFiles = await _resolveAndDownloadItem(item, moodleSession,
+        accountId,
+        cacheGeneration,);
+      allDownloaded.addAll(downloadedFiles);
+    }
 
-      for (final file in downloadedFiles) {
-        final archiveFile = ArchiveFile(
+    if (allDownloaded.isEmpty) {
+      throw Exception('Could not extract any binary files (PPT/PDF/DOCX/MD) from this unit.',);
+    }
+
+    if (format == MaterialExportFormat.folder) {
+      // Export directly as an uncompressed folder inside Downloads/CULMS/Course_Unit
+      onProgress?.call(total, total, 'Saving files into Downloads/CULMS/$sanitizedCourse/$sanitizedUnit...',);
+
+      Directory targetFolder = Directory('${culmsDir.path}/$sanitizedCourse/$sanitizedUnit',);
+      if (!await targetFolder.exists()) {
+        try {
+          await targetFolder.create(recursive: true);
+        } catch (_) {
+          targetFolder = Directory('${culmsDir.path}/${sanitizedCourse}_$sanitizedUnit',);
+          await targetFolder.create(recursive: true);
+        }
+      }
+
+      final savedFiles = <File>[];
+      for (final df in allDownloaded) {
+        final safeName = df.filename.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+        final file = File('${targetFolder.path}/$safeName');
+        await file.writeAsBytes(df.bytes);
+        savedFiles.add(file);
+      }
+
+      onProgress?.call(total, total, 'Files saved in Downloads/CULMS!');
+
+      if (autoShare && savedFiles.isNotEmpty) {
+        await SharePlus.instance.share(
+          ShareParams(
+            files: savedFiles.map((f) => XFile(f.path)).toList(),
+            subject: '$courseName - $unitName Files',
+            text: 'Exported course files for $unitName',
+          ),
+        );
+      }
+
+      return MaterialExportResult(
+        isZip: false,
+        folder: targetFolder,
+        fileCount: savedFiles.length,
+        path: targetFolder.path,
+        files: savedFiles,
+      );
+    } else {
+      // Export as packed ZIP archive in Downloads/CULMS/
+      onProgress?.call(total, total, 'Compressing into ZIP archive...');
+
+      final archive = Archive();
+      for (final file in allDownloaded) {
+        archive.addFile(ArchiveFile(
           file.filename,
           file.bytes.length,
-          file.bytes,
-        );
-        archive.addFile(archiveFile);
+          file.bytes),);
       }
-    }
 
-    if (archive.isEmpty) {
-      throw Exception('Could not extract any binary files (PPT/PDF/DOCX/MD) from this unit.');
-    }
+      final zipEncoder = ZipEncoder();
+      final zipBytes = zipEncoder.encode(archive);
 
-    onProgress?.call(total, total, 'Compressing into ZIP archive...');
+      if (zipBytes.isEmpty) {
+        throw Exception('Failed to generate ZIP archive.');
+      }
 
-    final zipEncoder = ZipEncoder();
-    final zipBytes = zipEncoder.encode(archive);
+      final zipFilename = '${sanitizedCourse}_$sanitizedUnit.zip';
+      File? zipFile;
 
-    if (zipBytes.isEmpty) {
-      throw Exception('Failed to generate ZIP archive.');
-    }
-
-    // Create safe filename
-    final sanitizedCourse = courseName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-    final sanitizedUnit = unitName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-    final zipFilename = '${sanitizedCourse}_$sanitizedUnit.zip';
-
-    // 1. Save directly to public Downloads folder (or best available destination)
-    final destDir = await _getDestinationDirectory();
-    File? zipFile;
-
-    try {
-      final targetFile = File('${destDir.path}/$zipFilename');
-      await targetFile.writeAsBytes(zipBytes);
-      zipFile = targetFile;
-    } catch (_) {
-      // Fallback to app external storage or temp directory if public folder access fails
       try {
-        final extDir = await getExternalStorageDirectory();
-        if (extDir != null) {
-          final fallbackFile = File('${extDir.path}/$zipFilename');
-          await fallbackFile.writeAsBytes(zipBytes);
-          zipFile = fallbackFile;
-        }
-      } catch (_) {}
-    }
+        final targetFile = File('${culmsDir.path}/$zipFilename');
+        await targetFile.writeAsBytes(zipBytes);
+        zipFile = targetFile;
+      } catch (_) {
+        try {
+          final extDir = await getExternalStorageDirectory();
+          if (extDir != null) {
+            final fallbackDir = Directory('${extDir.path}/CULMS');
+            if (!await fallbackDir.exists()) await fallbackDir.create(recursive: true);
+            final fallbackFile = File('${fallbackDir.path}/$zipFilename');
+            await fallbackFile.writeAsBytes(zipBytes);
+            zipFile = fallbackFile;
+          }
+        } catch (_) {}
+      }
 
-    if (zipFile == null) {
-      final tempDir = await getTemporaryDirectory();
-      final fallbackFile = File('${tempDir.path}/$zipFilename');
-      await fallbackFile.writeAsBytes(zipBytes);
-      zipFile = fallbackFile;
-    }
+      if (zipFile == null) {
+        final tempDir = await getTemporaryDirectory();
+        final fallbackFile = File('${tempDir.path}/$zipFilename');
+        await fallbackFile.writeAsBytes(zipBytes);
+        zipFile = fallbackFile;
+      }
 
-    onProgress?.call(total, total, 'ZIP archive saved in Downloads!');
+      onProgress?.call(total, total, 'ZIP archive saved in Downloads/CULMS!');
 
-    // 2. Open share sheet if autoShare is enabled
-    if (autoShare) {
-      await Share.shareXFiles(
-        [XFile(zipFile.path)],
-        subject: '$courseName - $unitName Files',
-        text: 'Exported course files for $unitName',
+      if (autoShare) {
+        await SharePlus.instance.share(
+          ShareParams(
+            files: [XFile(zipFile.path)],
+            subject: '$courseName - $unitName Files',
+            text: 'Exported course files for $unitName',
+          ),
+        );
+      }
+
+      return MaterialExportResult(
+        isZip: true,
+        zipFile: zipFile,
+        fileCount: allDownloaded.length,
+        path: zipFile.path,
+        files: [zipFile],
       );
     }
+  }
 
-    return zipFile;
+  /// Legacy helper for backward compatibility
+  Future<File?> exportUnitToZip({
+    required String courseName,
+    required String unitName,
+    required List<LmsContentItem> items,
+    required String moodleSession,
+    String? accountId,
+    ProgressCallback? onProgress,
+    bool autoShare = true,
+  }) async {
+    final result = await exportUnitMaterials(
+      courseName: courseName,
+      unitName: unitName,
+      items: items,
+      moodleSession: moodleSession,
+      accountId: accountId,
+      format: MaterialExportFormat.zip,
+      onProgress: onProgress,
+      autoShare: autoShare,
+    );
+    return result.zipFile;
   }
 }

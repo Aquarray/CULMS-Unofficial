@@ -2,10 +2,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/assignment.dart';
 import 'app_providers.dart';
 import 'auth_provider.dart';
+import 'settings_provider.dart';
 
 /// Provider for Assignment Detail (overview, instructions, teacher files, status)
 final assignmentDetailProvider =
-    FutureProvider.family<AssignmentDetail, int>((ref, assignId) async {
+    FutureProvider.family<AssignmentDetail, int>((ref, assignId,) async {
+  ref.watch(
+    settingsProvider.select((s) => (s.enableOfflineCache, s.cacheTtlHours)),
+  );
   final auth = ref.watch(authProvider);
   if (!auth.isAuthenticated || auth.session == null) {
     throw Exception('Authentication required to view assignment');
@@ -94,7 +98,7 @@ class AssignmentUploadNotifier extends Notifier<AssignmentUploadState> {
       );
       state = state.copyWith(
         config: config,
-        isLoading: false,
+        isLoading: false
       );
     } catch (e) {
       state = state.copyWith(
@@ -145,7 +149,7 @@ class AssignmentUploadNotifier extends Notifier<AssignmentUploadState> {
           ? '.${filename.split('.').last.toLowerCase()}'
           : '';
       final isAccepted = currentConfig.acceptedTypes
-          .any((t) => t.toLowerCase() == ext || t == 'all');
+          .any((t) => t.toLowerCase() == ext || t == 'all',);
       if (!isAccepted) {
         state = state.copyWith(
           errorMessage:
@@ -155,7 +159,7 @@ class AssignmentUploadNotifier extends Notifier<AssignmentUploadState> {
       }
     }
 
-    state = state.copyWith(isUploading: true, clearError: true, clearSuccess: true);
+    state = state.copyWith(isUploading: true, clearError: true, clearSuccess: true,);
 
     try {
       final apiClient = ref.read(lmsApiClientProvider);
@@ -198,7 +202,7 @@ class AssignmentUploadNotifier extends Notifier<AssignmentUploadState> {
     final currentConfig = state.config;
     if (currentConfig == null) return false;
 
-    state = state.copyWith(isLoading: true, clearError: true, clearSuccess: true);
+    state = state.copyWith(isLoading: true, clearError: true, clearSuccess: true,);
     try {
       final apiClient = ref.read(lmsApiClientProvider);
       await apiClient.deleteDraftFile(
@@ -349,5 +353,5 @@ final assignmentUploadProvider = NotifierProvider.family<
     AssignmentUploadNotifier,
     AssignmentUploadState,
     int>(
-  (assignId) => AssignmentUploadNotifier(assignId),
+  (assignId) => AssignmentUploadNotifier(assignId)
 );

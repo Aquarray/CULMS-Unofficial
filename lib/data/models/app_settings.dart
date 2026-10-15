@@ -91,6 +91,46 @@ enum QuizAiProvider {
   openAi,
 }
 
+enum MaterialExportFormat {
+  zip,
+  folder;
+
+  String get label => this == MaterialExportFormat.zip ? 'Packed ZIP Archive (.zip)' : 'Direct Folder';
+}
+
+const String defaultAiStudyPromptTemplate = '''Subject: {%subject_name%} - {%chapter_number%}
+
+ROLE: You are a study-material assistant that converts a ZIP archive of unit/chapter files (PPT, DOCX, TXT) into a structured, exam-ready learning guide.
+
+SOURCE PRIORITY: When extracting content, treat PPT as the primary source, DOCX as secondary, and TXT as tertiary. If sources conflict, prioritize in this order: DOCX > PPT > TXT. If DOCX contains topics absent from the PPT, include them in the syllabus anyway, clearly marked as "(from DOCX)".
+
+WORKFLOW:
+1. On receiving the ZIP, extract and parse all PPT, DOCX, and TXT files for the unit.
+2. Before generating any content, ask the user:
+   a. Subject name (user will paste this above the prompt).
+   b. Whether they want MST-style prep, EST-style prep, or both.
+      - MST: 2-mark and 5-mark Q&A.
+      - EST: 2-mark, 5-mark, and 10-mark Q&A.
+   c. Confirm the user wants to proceed topic-by-topic (one topic at a time, waiting for user confirmation before moving to the next).
+3. Build a MASTER SYLLABUS LIST: a hierarchical list of all topics and subtopics (with levels, e.g., 1, 1.1, 1.1.1) found across all sources combined. Output this list immediately after analysis, BEFORE starting topic-by-topic teaching. Repeat/reference this master list at the start of each subsequent topic's output so it is never lost, even if conversation context is long.
+4. For each topic (taken one at a time, in syllabus order, waiting for user go-ahead to proceed to the next):
+   a. Give a detailed summary of the topic.
+   b. Explicitly connect it to the previous topic (if a relationship exists), with a concrete example illustrating the connection.
+   c. Use terminology/jargon with definitions in brackets on first use. Shorten the bracketed definition on second use. Drop the bracketed definition entirely by the third use (assume the term is now learned).
+   d. Adapt teaching style to subject type:
+      - For quantitative subjects (math, physics, etc.): give one worked example per concept, then practice questions covering all basic variants of that concept, followed by 1–2 combined/mixed questions integrating multiple concepts.
+      - For subjective/theory subjects: provide Q&A pairs formatted by mark-weight (2/5/10 marks as selected by the user), using jargon-with-brackets as described above.
+   e. For diagrams/visuals: do NOT generate images. Instead, provide a working link to a clear, easy-to-understand diagram from any credible public source (no specific source preference required).
+5. Ensure complete topical coverage — cross-check against the master syllabus list before concluding each topic and before finishing the unit.
+6. Maintain the master syllabus list as top priority context — re-state it at logical checkpoints (e.g., every few topics) to prevent loss due to context limits.
+
+CONSTRAINTS:
+- Do not skip any topic present in any of the three source types.
+- Do not generate images; only links.
+- Wait for explicit user confirmation (MST/EST choice) before producing any Q&A content.
+- Proceed strictly topic-by-topic; do not dump the entire unit's content in one response.
+- Ask user to attcah the zip file if not given''';
+
 class AppSettings {
   final AppThemeMode themeMode;
   final AppAccentColor accentColor;
@@ -105,6 +145,7 @@ class AppSettings {
   final bool notificationsEnabled;
   final int deadlineReminderHours;
   final bool autoShareExportedZip;
+  final MaterialExportFormat exportFormat;
   final double ttsSpeechRate;
   final double ttsPitch;
   final double ttsVolume;
@@ -114,6 +155,7 @@ class AppSettings {
   final bool alarm1HourBefore;
   final bool alarmAtExactTime;
   final bool enableLearnWithAi;
+  final String aiStudyPromptTemplate;
   final bool enableQuizAiHelper;
   final QuizAiProvider quizAiProvider;
   final String quizAiApiKey;
@@ -133,6 +175,7 @@ class AppSettings {
     this.notificationsEnabled = true,
     this.deadlineReminderHours = 24,
     this.autoShareExportedZip = true,
+    this.exportFormat = MaterialExportFormat.zip,
     this.ttsSpeechRate = 0.5,
     this.ttsPitch = 1.0,
     this.ttsVolume = 1.0,
@@ -142,6 +185,7 @@ class AppSettings {
     this.alarm1HourBefore = true,
     this.alarmAtExactTime = true,
     this.enableLearnWithAi = true,
+    this.aiStudyPromptTemplate = defaultAiStudyPromptTemplate,
     this.enableQuizAiHelper = true,
     this.quizAiProvider = QuizAiProvider.gemini,
     this.quizAiApiKey = '',
@@ -162,6 +206,7 @@ class AppSettings {
     bool? notificationsEnabled,
     int? deadlineReminderHours,
     bool? autoShareExportedZip,
+    MaterialExportFormat? exportFormat,
     double? ttsSpeechRate,
     double? ttsPitch,
     double? ttsVolume,
@@ -171,6 +216,7 @@ class AppSettings {
     bool? alarm1HourBefore,
     bool? alarmAtExactTime,
     bool? enableLearnWithAi,
+    String? aiStudyPromptTemplate,
     bool? enableQuizAiHelper,
     QuizAiProvider? quizAiProvider,
     String? quizAiApiKey,
@@ -190,6 +236,7 @@ class AppSettings {
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
       deadlineReminderHours: deadlineReminderHours ?? this.deadlineReminderHours,
       autoShareExportedZip: autoShareExportedZip ?? this.autoShareExportedZip,
+      exportFormat: exportFormat ?? this.exportFormat,
       ttsSpeechRate: ttsSpeechRate ?? this.ttsSpeechRate,
       ttsPitch: ttsPitch ?? this.ttsPitch,
       ttsVolume: ttsVolume ?? this.ttsVolume,
@@ -199,6 +246,7 @@ class AppSettings {
       alarm1HourBefore: alarm1HourBefore ?? this.alarm1HourBefore,
       alarmAtExactTime: alarmAtExactTime ?? this.alarmAtExactTime,
       enableLearnWithAi: enableLearnWithAi ?? this.enableLearnWithAi,
+      aiStudyPromptTemplate: aiStudyPromptTemplate ?? this.aiStudyPromptTemplate,
       enableQuizAiHelper: enableQuizAiHelper ?? this.enableQuizAiHelper,
       quizAiProvider: quizAiProvider ?? this.quizAiProvider,
       quizAiApiKey: quizAiApiKey ?? this.quizAiApiKey,
@@ -221,6 +269,7 @@ class AppSettings {
       'notificationsEnabled': notificationsEnabled,
       'deadlineReminderHours': deadlineReminderHours,
       'autoShareExportedZip': autoShareExportedZip,
+      'exportFormat': exportFormat.name,
       'ttsSpeechRate': ttsSpeechRate,
       'ttsPitch': ttsPitch,
       'ttsVolume': ttsVolume,
@@ -230,6 +279,7 @@ class AppSettings {
       'alarm1HourBefore': alarm1HourBefore,
       'alarmAtExactTime': alarmAtExactTime,
       'enableLearnWithAi': enableLearnWithAi,
+      'aiStudyPromptTemplate': aiStudyPromptTemplate,
       'enableQuizAiHelper': enableQuizAiHelper,
       'quizAiProvider': quizAiProvider.name,
       'quizAiApiKey': quizAiApiKey,
@@ -264,6 +314,10 @@ class AppSettings {
       notificationsEnabled: map['notificationsEnabled'] as bool? ?? true,
       deadlineReminderHours: map['deadlineReminderHours'] as int? ?? 24,
       autoShareExportedZip: map['autoShareExportedZip'] as bool? ?? true,
+      exportFormat: MaterialExportFormat.values.firstWhere(
+        (e) => e.name == map['exportFormat'],
+        orElse: () => MaterialExportFormat.zip,
+      ),
       ttsSpeechRate: (map['ttsSpeechRate'] as num?)?.toDouble() ?? 0.5,
       ttsPitch: (map['ttsPitch'] as num?)?.toDouble() ?? 1.0,
       ttsVolume: (map['ttsVolume'] as num?)?.toDouble() ?? 1.0,
@@ -273,6 +327,7 @@ class AppSettings {
       alarm1HourBefore: map['alarm1HourBefore'] as bool? ?? true,
       alarmAtExactTime: map['alarmAtExactTime'] as bool? ?? true,
       enableLearnWithAi: map['enableLearnWithAi'] as bool? ?? true,
+      aiStudyPromptTemplate: map['aiStudyPromptTemplate'] as String? ?? defaultAiStudyPromptTemplate,
       enableQuizAiHelper: map['enableQuizAiHelper'] as bool? ?? true,
       quizAiProvider: QuizAiProvider.values.firstWhere(
         (e) => e.name == map['quizAiProvider'],

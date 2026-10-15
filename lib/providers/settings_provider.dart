@@ -76,6 +76,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _saveSettings(state.copyWith(autoShareExportedZip: autoShare));
   }
 
+  void updateExportFormat(MaterialExportFormat format) {
+    _saveSettings(state.copyWith(exportFormat: format));
+  }
+
   void updateTtsSpeechRate(double rate) {
     _saveSettings(state.copyWith(ttsSpeechRate: rate));
   }
@@ -110,6 +114,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void updateEnableLearnWithAi(bool enable) {
     _saveSettings(state.copyWith(enableLearnWithAi: enable));
+  }
+
+  void updateAiStudyPromptTemplate(String template) {
+    _saveSettings(state.copyWith(aiStudyPromptTemplate: template));
   }
 
   void updateEnableQuizAiHelper(bool enable) {

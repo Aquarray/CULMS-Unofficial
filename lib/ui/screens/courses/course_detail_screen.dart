@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/course.dart';
 import '../../../data/models/course_content.dart';
 import '../../../providers/app_providers.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../providers/course_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../assignments/assignment_detail_screen.dart';
@@ -28,7 +29,9 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
 
   Future<void> _refreshMaterials() async {
     final apiClient = ref.read(lmsApiClientProvider);
-    await apiClient.clearCourseUnitsCache(widget.course.id);
+    final uid = ref.read(authProvider).session?.uid;
+    if (uid == null) return;
+    await apiClient.clearCourseUnitsCache(widget.course.id, accountId: uid);
     ref.invalidate(courseUnitsProvider(widget.course.id));
   }
 
@@ -38,7 +41,7 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
       AppBrowserScreen.open(
         context,
         url: activity.url,
-        title: activity.name,
+        title: activity.name
       );
       return;
     }
@@ -81,7 +84,7 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
       AppBrowserScreen.open(
         context,
         url: activity.url,
-        title: activity.name,
+        title: activity.name
       );
       return;
     }
@@ -91,7 +94,7 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => const Center(
-        child: CircularProgressIndicator(),
+        child: CircularProgressIndicator()
       ),
     );
 
@@ -138,14 +141,14 @@ $cleanText
         AppBrowserScreen.open(
           context,
           url: activity.url,
-          title: activity.name,
+          title: activity.name
         );
       }
     } catch (e) {
       if (mounted) {
         Navigator.pop(context); // close loader
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load item: $e')),
+          SnackBar(content: Text('Failed to load item: $e'))
         );
       }
     }
@@ -170,12 +173,12 @@ $cleanText
             children: [
               Row(
                 children: [
-                  const Icon(Icons.folder_open_rounded, color: Colors.amber, size: 24),
+                  const Icon(Icons.folder_open_rounded, color: Colors.amber, size: 24,),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       folderContent.pageTitle,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold,),
                     ),
                   ),
                 ],
@@ -190,12 +193,12 @@ $cleanText
                     final item = folderContent.items[idx];
                     return ListTile(
                       leading: _getFileIcon(item.fileType),
-                      title: Text(item.name, style: const TextStyle(fontSize: 14)),
+                      title: Text(item.name, style: const TextStyle(fontSize: 14),),
                       subtitle: Text(
                         '${item.fileType.toUpperCase()} File',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        style: const TextStyle(fontSize: 12, color: Colors.grey,),
                       ),
-                      trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+                      trailing: const Icon(Icons.chevron_right_rounded, size: 20,),
                       onTap: () {
                         Navigator.pop(ctx);
                         Navigator.push(
@@ -235,15 +238,24 @@ $cleanText
     }
   }
 
-  void _exportUnit(CourseUnit unit) {
+  void _exportUnit(
+    CourseUnit unit, {
+    List<CourseUnit>? allUnitsInGroup,
+    String? groupTitle,
+    bool wholeUnit = false,
+  }) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (_) => UnitExportSheet(
         courseName: widget.course.cleanTitle,
         unit: unit,
+        groupTitle: groupTitle ?? unit.parentUnit,
+        allUnitsInGroup: allUnitsInGroup ?? [unit],
+        exportWholeGroupInitially: wholeUnit,
       ),
     );
   }
@@ -276,7 +288,7 @@ $cleanText
             onPressed: _refreshMaterials,
           ),
           IconButton(
-            icon: const Icon(Icons.open_in_browser_rounded),
+            icon: const Icon(Icons.language_rounded),
             tooltip: 'Open in LMS',
             onPressed: () {
               AppBrowserScreen.open(
@@ -306,9 +318,9 @@ $cleanText
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4,),
                               decoration: BoxDecoration(
-                                color: theme.primaryColor.withValues(alpha: 0.12),
+                                color: theme.primaryColor.withValues(alpha: 0.12,),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
@@ -326,7 +338,7 @@ $cleanText
                               child: Material(
                                 color: Colors.transparent,
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4,),
                                   decoration: BoxDecoration(
                                     color: widget.course.isContentCourse
                                         ? const Color(0xFF3B82F6).withValues(alpha: 0.15)
@@ -382,7 +394,7 @@ $cleanText
                             const SizedBox(width: 12),
                             Text(
                               '${widget.course.progress}%',
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600,),
                             ),
                           ],
                         ),
@@ -395,13 +407,13 @@ $cleanText
                               Navigator.pushReplacement(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => CourseDetailScreen(course: companionCourse),
+                                  builder: (_) => CourseDetailScreen(course: companionCourse,),
                                 ),
                               );
                             },
                             borderRadius: BorderRadius.circular(10),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8,),
                               decoration: BoxDecoration(
                                 color: isDark ? const Color(0xFF22272E) : const Color(0xFFF8FAFC),
                                 borderRadius: BorderRadius.circular(10),
@@ -435,7 +447,7 @@ $cleanText
                                       ),
                                     ),
                                   ),
-                                  const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Colors.grey),
+                                  const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Colors.grey,),
                                 ],
                               ),
                             ),
@@ -460,9 +472,9 @@ $cleanText
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.error_outline_rounded, size: 40, color: Colors.red),
+                        const Icon(Icons.error_outline_rounded, size: 40, color: Colors.red,),
                         const SizedBox(height: 12),
-                        Text('Failed to load course materials: $err', textAlign: TextAlign.center),
+                        Text('Failed to load course materials: $err', textAlign: TextAlign.center,),
                         const SizedBox(height: 12),
                         FilledButton(
                           onPressed: _refreshMaterials,
@@ -495,16 +507,16 @@ $cleanText
                 final hasQuiz = quizUnits.isNotEmpty;
                 final hasAssignment = assignmentUnits.isNotEmpty;
 
-                final totalAssessmentActivities = assessmentModelUnits.fold<int>(0, (s, u) => s + u.activities.length) +
-                    liveSessionUnits.fold<int>(0, (s, u) => s + u.activities.length) +
-                    surpriseTestUnits.fold<int>(0, (s, u) => s + u.activities.length) +
+                final totalAssessmentActivities = assessmentModelUnits.fold<int>(0, (s, u) => s + u.activities.length,) +
+                    liveSessionUnits.fold<int>(0, (s, u) => s + u.activities.length,) +
+                    surpriseTestUnits.fold<int>(0, (s, u) => s + u.activities.length,) +
                     quizUnits.fold<int>(0, (s, u) => s + u.activities.length) +
-                    assignmentUnits.fold<int>(0, (s, u) => s + u.activities.length);
+                    assignmentUnits.fold<int>(0, (s, u) => s + u.activities.length,);
 
                 // Content Course Specific Sections
-                final hasTheory = units.any((u) => u.isTheory && u.activities.isNotEmpty);
-                final hasPractical = units.any((u) => u.isPractical && u.activities.isNotEmpty);
-                final hasOverview = units.any((u) => u.isOverview && u.activities.isNotEmpty);
+                final hasTheory = units.any((u) => u.isTheory && u.activities.isNotEmpty,);
+                final hasPractical = units.any((u) => u.isPractical && u.activities.isNotEmpty,);
+                final hasOverview = units.any((u) => u.isOverview && u.activities.isNotEmpty,);
 
                 // Filter units based on selected tab
                 final filteredUnits = units.where((u) {
@@ -534,7 +546,7 @@ $cleanText
                 for (final u in filteredUnits) {
                   if (!isAssessmentCourse &&
                       u.isHeaderOnly &&
-                      filteredUnits.any((other) => other.parentUnit == u.parentUnit && other.id != u.id)) {
+                      filteredUnits.any((other) => other.parentUnit == u.parentUnit && other.id != u.id,)) {
                     continue;
                   }
                   groupedUnits.putIfAbsent(u.parentUnit, () => []).add(u);
@@ -553,7 +565,7 @@ $cleanText
                   );
 
                   if (hasAssessmentModel) {
-                    final amCount = assessmentModelUnits.fold<int>(0, (s, u) => s + u.activities.length);
+                    final amCount = assessmentModelUnits.fold<int>(0, (s, u) => s + u.activities.length,);
                     filterChips.add(const SizedBox(width: 8));
                     filterChips.add(
                       _CategoryChip(
@@ -565,7 +577,7 @@ $cleanText
                   }
 
                   if (hasLiveSessions) {
-                    final lsCount = liveSessionUnits.fold<int>(0, (s, u) => s + u.activities.length);
+                    final lsCount = liveSessionUnits.fold<int>(0, (s, u) => s + u.activities.length,);
                     filterChips.add(const SizedBox(width: 8));
                     filterChips.add(
                       _CategoryChip(
@@ -577,7 +589,7 @@ $cleanText
                   }
 
                   if (hasSurpriseTest) {
-                    final stCount = surpriseTestUnits.fold<int>(0, (s, u) => s + u.activities.length);
+                    final stCount = surpriseTestUnits.fold<int>(0, (s, u) => s + u.activities.length,);
                     filterChips.add(const SizedBox(width: 8));
                     filterChips.add(
                       _CategoryChip(
@@ -589,7 +601,7 @@ $cleanText
                   }
 
                   if (hasQuiz) {
-                    final qzCount = quizUnits.fold<int>(0, (s, u) => s + u.activities.length);
+                    final qzCount = quizUnits.fold<int>(0, (s, u) => s + u.activities.length,);
                     filterChips.add(const SizedBox(width: 8));
                     filterChips.add(
                       _CategoryChip(
@@ -601,7 +613,7 @@ $cleanText
                   }
 
                   if (hasAssignment) {
-                    final asgCount = assignmentUnits.fold<int>(0, (s, u) => s + u.activities.length);
+                    final asgCount = assignmentUnits.fold<int>(0, (s, u) => s + u.activities.length,);
                     filterChips.add(const SizedBox(width: 8));
                     filterChips.add(
                       _CategoryChip(
@@ -656,7 +668,7 @@ $cleanText
                     // Tab Selector
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0,),
                         child: SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           child: Row(children: filterChips),
@@ -674,11 +686,11 @@ $cleanText
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.assignment_outlined, size: 48, color: Colors.grey.withValues(alpha: 0.5)),
+                                Icon(Icons.assignment_outlined, size: 48, color: Colors.grey.withValues(alpha: 0.5),),
                                 const SizedBox(height: 12),
                                 const Text(
                                   'No items found under this filter.',
-                                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14,),
                                 ),
                               ],
                             ),
@@ -687,15 +699,15 @@ $cleanText
                       )
                     else
                       SliverPadding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8,),
                         sliver: SliverList(
                           delegate: SliverChildBuilderDelegate(
-                            (context, groupIdx) {
-                              final groupKey = groupedUnits.keys.elementAt(groupIdx);
+                            (context, groupIdx,) {
+                              final groupKey = groupedUnits.keys.elementAt(groupIdx,);
                               final groupSections = groupedUnits[groupKey]!;
 
                               return SlideScrollItem(
-                                key: ValueKey('unit_group_${widget.course.id}_$groupKey'),
+                                key: ValueKey('unit_group_${widget.course.id}_$groupKey',),
                                 index: groupIdx,
                                 direction: SlideDirection.up,
                                 child: Column(
@@ -703,15 +715,15 @@ $cleanText
                                   children: [
                                   // Unit Group Header Divider
                                   Padding(
-                                    padding: const EdgeInsets.only(top: 14.0, bottom: 8.0, left: 4),
+                                    padding: const EdgeInsets.only(top: 14.0, bottom: 8.0, left: 4,),
                                     child: Row(
                                       children: [
                                         Container(
                                           width: 4,
                                           height: 16,
                                           decoration: BoxDecoration(
-                                            color: _getGroupKeyColor(groupKey, theme),
-                                            borderRadius: BorderRadius.circular(2),
+                                            color: _getGroupKeyColor(groupKey, theme,),
+                                            borderRadius: BorderRadius.circular(2,),
                                           ),
                                         ),
                                         const SizedBox(width: 8),
@@ -722,6 +734,50 @@ $cleanText
                                             fontWeight: FontWeight.bold,
                                             color: isDark ? Colors.white70 : const Color(0xFF334155),
                                           ),
+                                        ),
+                                        const Spacer(),
+                                        Builder(
+                                          builder: (_) {
+                                            final totalDownloadable = groupSections.fold<int>(
+                                              0,
+                                              (sum, u) => sum + u.activities.where((a) =>
+                                                a.iconType == 'file' || a.iconType == 'folder' || a.iconType == 'page',
+                                              ).length,
+                                            );
+                                            if (totalDownloadable == 0) return const SizedBox.shrink();
+
+                                            return InkWell(
+                                              onTap: () => _exportUnit(
+                                                groupSections.first,
+                                                allUnitsInGroup: groupSections,
+                                                groupTitle: groupKey,
+                                                wholeUnit: true,
+                                              ),
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2,),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(
+                                                      Icons.archive_outlined,
+                                                      size: 14,
+                                                      color: theme.primaryColor,
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Text(
+                                                      'Download Unit ($totalDownloadable)',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight: FontWeight.w600,
+                                                        color: theme.primaryColor,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            );
+                                          },
                                         ),
                                       ],
                                     ),
@@ -740,13 +796,13 @@ $cleanText
                                       ),
                                       child: ExpansionTile(
                                         initiallyExpanded: isAssessmentCourse || groupIdx == 0,
-                                        tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                        tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4,),
                                         leading: Container(
                                           height: 36,
                                           width: 36,
                                           decoration: BoxDecoration(
-                                            color: _getUnitColor(unit, theme).withValues(alpha: 0.12),
-                                            borderRadius: BorderRadius.circular(10),
+                                            color: _getUnitColor(unit, theme,).withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(10,),
                                           ),
                                           alignment: Alignment.center,
                                           child: Icon(
@@ -757,7 +813,7 @@ $cleanText
                                         ),
                                         title: Text(
                                           unit.title,
-                                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14,),
                                         ),
                                         subtitle: Text(
                                           unit.activities.isEmpty
@@ -789,14 +845,18 @@ $cleanText
                                                 ),
                                               ),
                                               IconButton(
-                                                icon: const Icon(Icons.archive_outlined, size: 20),
-                                                tooltip: 'Export Unit as ZIP',
-                                                onPressed: () => _exportUnit(unit),
+                                                icon: const Icon(Icons.archive_outlined, size: 20,),
+                                                tooltip: 'Export Chapter as ZIP',
+                                                onPressed: () => _exportUnit(
+                                                  unit,
+                                                  allUnitsInGroup: groupSections,
+                                                  groupTitle: groupKey,
+                                                ),
                                               ),
                                             ],
                                             if (unit.sectionUrl != null && unit.sectionUrl!.isNotEmpty)
                                               IconButton(
-                                                icon: const Icon(Icons.open_in_browser_rounded, size: 18),
+                                                icon: const Icon(Icons.language_rounded, size: 18,),
                                                 tooltip: 'Open Section in LMS',
                                                 onPressed: () {
                                                   AppBrowserScreen.open(
@@ -811,7 +871,7 @@ $cleanText
                                         children: unit.activities.isEmpty
                                             ? [_buildEmptySection(unit, isDark)]
                                             : unit.activities.map((act) {
-                                                return _buildActivityTile(act, isDark);
+                                                return _buildActivityTile(act, isDark,);
                                               }).toList(),
                                       ),
                                     );
@@ -820,7 +880,7 @@ $cleanText
                               ),
                             );
                           },
-                            childCount: groupedUnits.length,
+                            childCount: groupedUnits.length
                           ),
                         ),
                       ),
@@ -881,10 +941,10 @@ $cleanText
           if (unit.sectionUrl != null && unit.sectionUrl!.isNotEmpty) ...[
             const SizedBox(height: 10),
             OutlinedButton.icon(
-              icon: const Icon(Icons.open_in_browser_rounded, size: 14),
-              label: const Text('Open Section in App Browser', style: TextStyle(fontSize: 11)),
+              icon: const Icon(Icons.language_rounded, size: 14),
+              label: const Text('Open Section in App Browser', style: TextStyle(fontSize: 11),),
               style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4,),
                 minimumSize: const Size(0, 30),
               ),
               onPressed: () {
@@ -938,7 +998,7 @@ $cleanText
                 children: [
                   Text(
                     'Join Link',
-                    style: TextStyle(fontSize: 11.5, color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 0.2),
+                    style: TextStyle(fontSize: 11.5, color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 0.2,),
                   ),
                   SizedBox(width: 5),
                   Icon(Icons.launch_rounded, size: 13, color: Colors.white),
@@ -947,7 +1007,7 @@ $cleanText
             )
           : (isQuiz
               ? Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6,),
                   decoration: BoxDecoration(
                     color: quizBg,
                     borderRadius: BorderRadius.circular(8),
@@ -961,16 +1021,16 @@ $cleanText
                     children: [
                       Text(
                         'Attempt Quiz',
-                        style: TextStyle(fontSize: 11.5, color: quizFg, fontWeight: FontWeight.w700, letterSpacing: 0.2),
+                        style: TextStyle(fontSize: 11.5, color: quizFg, fontWeight: FontWeight.w700, letterSpacing: 0.2,),
                       ),
                       const SizedBox(width: 5),
-                      Icon(Icons.arrow_forward_rounded, size: 13, color: quizFg),
+                      Icon(Icons.arrow_forward_rounded, size: 13, color: quizFg,),
                     ],
                   ),
                 )
               : (isAssign
                   ? Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6,),
                       decoration: BoxDecoration(
                         color: isDark ? const Color(0xFFD97706) : const Color(0xFFB45309),
                         borderRadius: BorderRadius.circular(8),
@@ -984,10 +1044,10 @@ $cleanText
                         children: [
                           Text(
                             'View Task',
-                            style: TextStyle(fontSize: 11.5, color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 0.2),
+                            style: TextStyle(fontSize: 11.5, color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 0.2,),
                           ),
                           SizedBox(width: 5),
-                          Icon(Icons.arrow_forward_rounded, size: 13, color: Colors.white),
+                          Icon(Icons.arrow_forward_rounded, size: 13, color: Colors.white,),
                         ],
                       ),
                     )
@@ -1030,21 +1090,21 @@ $cleanText
   Widget _getActivityIcon(String iconType) {
     switch (iconType.toLowerCase()) {
       case 'file':
-        return const Icon(Icons.description_rounded, color: Colors.redAccent, size: 20);
+        return const Icon(Icons.description_rounded, color: Colors.redAccent, size: 20,);
       case 'folder':
         return const Icon(Icons.folder_rounded, color: Colors.amber, size: 20);
       case 'page':
-        return const Icon(Icons.menu_book_rounded, color: Colors.blue, size: 20);
+        return const Icon(Icons.menu_book_rounded, color: Colors.blue, size: 20,);
       case 'quiz':
         return const Icon(Icons.quiz_rounded, color: Colors.purple, size: 20);
       case 'forum':
         return const Icon(Icons.forum_rounded, color: Colors.teal, size: 20);
       case 'assign':
-        return const Icon(Icons.assignment_turned_in_rounded, color: Colors.orange, size: 20);
+        return const Icon(Icons.assignment_turned_in_rounded, color: Colors.orange, size: 20,);
       case 'url':
-        return const Icon(Icons.link_rounded, color: Colors.lightBlue, size: 20);
+        return const Icon(Icons.link_rounded, color: Colors.lightBlue, size: 20,);
       default:
-        return const Icon(Icons.insert_drive_file_rounded, color: Colors.grey, size: 20);
+        return const Icon(Icons.insert_drive_file_rounded, color: Colors.grey, size: 20,);
     }
   }
 }

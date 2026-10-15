@@ -33,6 +33,9 @@ class DashboardData {
 class DashboardNotifier extends Notifier<DashboardData> {
   @override
   DashboardData build() {
+    ref.watch(
+      settingsProvider.select((s) => (s.enableOfflineCache, s.cacheTtlHours)),
+    );
     final auth = ref.watch(authProvider);
     if (auth.isAuthenticated && auth.session != null) {
       Future.microtask(() => loadDashboard());
@@ -55,7 +58,7 @@ class DashboardNotifier extends Notifier<DashboardData> {
 
       state = state.copyWith(
         events: events,
-        isLoading: false,
+        isLoading: false
       );
 
       // User requirement: "The alarm timing will be refreshed on refreshing the homepage by canceling previous alarms."
@@ -64,7 +67,7 @@ class DashboardNotifier extends Notifier<DashboardData> {
         final alarmService = ref.read(alarmServiceProvider);
         await alarmService.refreshAlarms(
           events: events,
-          settings: settings,
+          settings: settings
         );
       } catch (e) {
         // Prevent alarm scheduling errors from interrupting UI
@@ -78,7 +81,7 @@ class DashboardNotifier extends Notifier<DashboardData> {
   }
 }
 
-final dashboardProvider = NotifierProvider<DashboardNotifier, DashboardData>(DashboardNotifier.new);
+final dashboardProvider = NotifierProvider<DashboardNotifier, DashboardData>(DashboardNotifier.new,);
 
 final dashboardStatsProvider = Provider<Map<String, dynamic>>((ref) {
   final coursesState = ref.watch(coursesProvider);
@@ -87,7 +90,7 @@ final dashboardStatsProvider = Provider<Map<String, dynamic>>((ref) {
   final totalCourses = coursesState.allCourses.length;
   double avgProgress = 0.0;
   if (totalCourses > 0) {
-    final sum = coursesState.allCourses.fold<int>(0, (prev, c) => prev + c.progress);
+    final sum = coursesState.allCourses.fold<int>(0, (prev, c) => prev + c.progress,);
     avgProgress = sum / totalCourses;
   }
 

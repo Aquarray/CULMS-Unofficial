@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_riverpod: ^3.4.3
   dio: ^5.11.1
+  crypto: ^3.0.7
   cookie_jar: ^4.0.9
   dio_cookie_manager: ^3.5.0
   html: ^0.15.7
@@ -53,6 +54,7 @@ dependencies:
   flutter_tts: ^4.2.5
   flutter_local_notifications: ^18.0.1
   timezone: ^0.10.0
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:

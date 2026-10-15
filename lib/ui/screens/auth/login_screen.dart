@@ -5,6 +5,7 @@ import '../../../providers/app_providers.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/settings_provider.dart';
 import 'captcha_dialog.dart';
+import 'widgets/sso_progress_dialog.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -17,6 +18,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
   final _uidController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isCaptchaDialogShowing = false;
   late AnimationController _pulseController;
 
   @override
@@ -132,15 +134,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
     final isProcessing = authState.status == AuthStatus.connectingGateway ||
         authState.status == AuthStatus.loggingInMoodle;
 
+    // Listen to auth state to display / dismiss the SSO Progress Dialog
+    ref.listen<AuthState>(authProvider, (previous, next) {
+      final wasProcessing = previous?.isProcessing ?? false;
+      final isNowProcessing = next.isProcessing;
+
+      if (!wasProcessing && isNowProcessing) {
+        SsoProgressDialog.show(context);
+      } else if (wasProcessing && !isNowProcessing) {
+        SsoProgressDialog.dismiss(context);
+      }
+    });
+
     // Show Captcha Dialog when manual verification is needed
-    if (authState.status == AuthStatus.captchaRequired && authState.pendingCaptcha != null) {
+    if (authState.status == AuthStatus.captchaRequired &&
+        authState.pendingCaptcha != null &&
+        !_isCaptchaDialogShowing) {
+      _isCaptchaDialogShowing = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
         showDialog(
           context: context,
           barrierDismissible: false,
           builder: (ctx) => CaptchaDialog(
             captchaImageBase64: authState.pendingCaptcha?.captchaImage,
             onSubmit: (captchaText) {
+              _isCaptchaDialogShowing = false;
               Navigator.pop(ctx);
               ref.read(authProvider.notifier).submitCaptcha(
                     uid: _uidController.text.trim(),
@@ -149,11 +168,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
                   );
             },
             onCancel: () {
+              _isCaptchaDialogShowing = false;
               Navigator.pop(ctx);
               ref.read(authProvider.notifier).cancelCaptcha();
             },
           ),
-        );
+        ).then((_) {
+          _isCaptchaDialogShowing = false;
+        });
       });
     }
 
@@ -178,7 +200,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
                         borderRadius: BorderRadius.circular(22),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
+                            color: Colors.black.withValues(alpha: 0.08),
                             blurRadius: 16,
                             offset: const Offset(0, 8),
                           ),
@@ -188,7 +210,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
                       child: Image.asset(
                         'assets/images/app_icon_red_glyph.png',
                         fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => Icon(
+                        errorBuilder: (_, _, _) => Icon(
                           Icons.school_rounded,
                           color: theme.primaryColor,
                           size: 38,
@@ -274,9 +296,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
                               margin: const EdgeInsets.only(bottom: 16),
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.1),
+                                color: Colors.red.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: Colors.red.withOpacity(0.3)),
+                                border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
                               ),
                               child: Row(
                                 children: [
@@ -291,44 +313,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
                                 ],
                               ),
                             ),
-
-                          // Loading Delay State Indicator (Step 2.2 in Technical Plan)
-                          if (isProcessing) ...[
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: theme.primaryColor.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: theme.primaryColor.withOpacity(0.2)),
-                              ),
-                              child: Column(
-                                children: [
-                                  const SizedBox(
-                                    height: 24,
-                                    width: 24,
-                                    child: CircularProgressIndicator(strokeWidth: 2.5),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    authState.statusMessage ?? 'Connecting to Cloud SSO Gateway...',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                      color: theme.primaryColor,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  const Text(
-                                    'Accommodating university gateway delay (~5s)',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(fontSize: 11, color: Colors.grey),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                          ],
 
                           // Login Submit Button
                           FilledButton(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/app_providers.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../providers/assignment_provider.dart';
 import '../browser/app_browser_screen.dart';
 import '../reader/pdf_viewer_screen.dart';
@@ -38,7 +39,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
         MaterialPageRoute(
           builder: (_) => PdfViewerScreen(
             title: title,
-            downloadUrl: downloadUrl,
+            downloadUrl: downloadUrl
           ),
         ),
       );
@@ -46,7 +47,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
       AppBrowserScreen.open(
         context,
         url: downloadUrl,
-        title: title,
+        title: title
       );
     }
   }
@@ -72,12 +73,13 @@ class AssignmentDetailScreen extends ConsumerWidget {
             onPressed: () async {
               // Remove from cache FIRST so the provider fetches fresh from network
               final cache = ref.read(cacheServiceProvider);
-              await cache.remove('assign_detail_$assignId');
+              await cache.remove('assign_detail_$assignId',
+                accountId: ref.read(authProvider).session?.uid,);
               ref.invalidate(assignmentDetailProvider(assignId));
             },
           ),
           IconButton(
-            icon: const Icon(Icons.open_in_browser_rounded),
+            icon: const Icon(Icons.language_rounded),
             tooltip: 'Open in LMS',
             onPressed: () {
               AppBrowserScreen.open(
@@ -107,12 +109,12 @@ class AssignmentDetailScreen extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(Icons.error_outline_rounded,
-                    size: 48, color: Colors.red),
+                    size: 48, color: Colors.red,),
                 const SizedBox(height: 12),
                 Text(
                   'Failed to load assignment',
                   style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.bold),
+                      ?.copyWith(fontWeight: FontWeight.bold,),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -158,7 +160,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
                           detail.courseName!.isNotEmpty) ...[
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
+                              horizontal: 10, vertical: 4,),
                           decoration: BoxDecoration(
                             color: theme.colorScheme.primary.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(20),
@@ -188,7 +190,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
                         children: [
                           if (detail.dueDate != null) ...[
                             Icon(Icons.event_rounded,
-                                size: 16, color: theme.colorScheme.primary),
+                                size: 16, color: theme.colorScheme.primary,),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
@@ -207,7 +209,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
                         Row(
                           children: [
                             const Icon(Icons.schedule_rounded,
-                                size: 16, color: Colors.grey),
+                                size: 16, color: Colors.grey,),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
@@ -225,7 +227,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
                         const SizedBox(height: 10),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 5),
+                              horizontal: 10, vertical: 5,),
                           decoration: BoxDecoration(
                             color: statusColor.withOpacity(0.12),
                             borderRadius: BorderRadius.circular(8),
@@ -237,7 +239,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.hourglass_top_rounded,
-                                  size: 14, color: statusColor),
+                                  size: 14, color: statusColor,),
                               const SizedBox(width: 6),
                               Text(
                                 detail.timeRemaining!,
@@ -358,9 +360,9 @@ class AssignmentDetailScreen extends ConsumerWidget {
                                 ),
                                 trailing: const Icon(
                                     Icons.arrow_forward_ios_rounded,
-                                    size: 14),
+                                    size: 14,),
                                 onTap: () =>
-                                    _openFile(context, file.name, file.downloadUrl),
+                                    _openFile(context, file.name, file.downloadUrl,),
                               ),
                             );
                           }),
@@ -437,9 +439,9 @@ class AssignmentDetailScreen extends ConsumerWidget {
                                 style: const TextStyle(fontSize: 11),
                               ),
                               trailing: const Icon(
-                                  Icons.arrow_forward_ios_rounded, size: 14),
+                                  Icons.arrow_forward_ios_rounded, size: 14,),
                               onTap: () =>
-                                  _openFile(context, file.name, file.downloadUrl),
+                                  _openFile(context, file.name, file.downloadUrl,),
                             ),
                           );
                         }),
@@ -504,7 +506,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
                         const Divider(height: 16),
                         _buildStatusRow(
                           'Last Modified',
-                          detail.lastModified!,
+                          detail.lastModified!
                         ),
                       ],
                       ...detail.extraStatusFields.entries.map((entry) {
@@ -555,13 +557,13 @@ class AssignmentDetailScreen extends ConsumerWidget {
                               title: Text(
                                 file.name,
                                 style: const TextStyle(
-                                    fontSize: 13, fontWeight: FontWeight.w500),
+                                    fontSize: 13, fontWeight: FontWeight.w500,),
                               ),
                               trailing: const Icon(
                                   Icons.arrow_forward_ios_rounded,
-                                  size: 14),
+                                  size: 14,),
                               onTap: () => _openFile(
-                                  context, file.name, file.downloadUrl),
+                                  context, file.name, file.downloadUrl,),
                             ),
                           );
                         }),
@@ -582,7 +584,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                     side: BorderSide(
-                      color: Colors.green.withOpacity(0.3),
+                      color: Colors.green.withOpacity(0.3)
                     ),
                   ),
                   child: Padding(
@@ -593,7 +595,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
                         const Row(
                           children: [
                             Icon(Icons.stars_rounded,
-                                color: Colors.green, size: 20),
+                                color: Colors.green, size: 20,),
                             SizedBox(width: 8),
                             Text(
                               'Feedback & Grade',
@@ -616,17 +618,17 @@ class AssignmentDetailScreen extends ConsumerWidget {
                         ],
                         if (detail.feedbackGradedOn != null) ...[
                           const Divider(height: 16),
-                          _buildStatusRow('Graded On', detail.feedbackGradedOn!),
+                          _buildStatusRow('Graded On', detail.feedbackGradedOn!,),
                         ],
                         if (detail.feedbackGradedBy != null) ...[
                           const Divider(height: 16),
-                          _buildStatusRow('Graded By', detail.feedbackGradedBy!),
+                          _buildStatusRow('Graded By', detail.feedbackGradedBy!,),
                         ],
                         if (detail.feedbackComments != null &&
                             detail.feedbackComments!.isNotEmpty) ...[
                           const Divider(height: 16),
                           _buildStatusRow(
-                              'Feedback Comments', detail.feedbackComments!),
+                              'Feedback Comments', detail.feedbackComments!,),
                         ],
                       ],
                     ),
@@ -649,7 +651,8 @@ class AssignmentDetailScreen extends ConsumerWidget {
                   );
                   if (result == true && context.mounted) {
                     final cache = ref.read(cacheServiceProvider);
-                    await cache.remove('assign_detail_$assignId');
+                    await cache.remove('assign_detail_$assignId',
+                      accountId: ref.read(authProvider).session?.uid,);
                     ref.invalidate(assignmentDetailProvider(assignId));
                   }
                 },
@@ -663,7 +666,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
                   detail.submittedFiles.isNotEmpty
                       ? 'Edit / Replace Submission'
                       : 'Add Submission',
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white,),
                 ),
                 style: FilledButton.styleFrom(
                   backgroundColor: theme.colorScheme.primary,
@@ -688,7 +691,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
                         title: const Row(
                           children: [
                             Icon(Icons.warning_amber_rounded,
-                                color: Colors.red),
+                                color: Colors.red,),
                             SizedBox(width: 8),
                             Text('Remove Submission?'),
                           ],
@@ -714,7 +717,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
 
                     if (confirm == true && context.mounted) {
                       final notifier = ref.read(
-                          assignmentUploadProvider(assignId).notifier);
+                          assignmentUploadProvider(assignId).notifier,);
                       final success = await notifier.removeSubmission(
                         userId: detail.moodleUserId,
                       );
@@ -727,13 +730,14 @@ class AssignmentDetailScreen extends ConsumerWidget {
                             ),
                           );
                           final cache = ref.read(cacheServiceProvider);
-                          await cache.remove('assign_detail_$assignId');
+                          await cache.remove('assign_detail_$assignId',
+                            accountId: ref.read(authProvider).session?.uid,);
                           ref.invalidate(assignmentDetailProvider(assignId));
                         } else {
                           final err = ref.read(assignmentUploadProvider(assignId)).errorMessage;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text(err ?? 'Failed to remove submission.'),
+                              content: Text(err ?? 'Failed to remove submission.',),
                               backgroundColor: Colors.red,
                             ),
                           );
@@ -742,7 +746,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
                     }
                   },
                   icon: const Icon(Icons.delete_outline_rounded,
-                      color: Colors.red, size: 18),
+                      color: Colors.red, size: 18,),
                   label: const Text(
                     'Remove Submission',
                     style: TextStyle(

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../core/services/alarm_service.dart';
 import '../../core/services/cache_service.dart';
 import '../../core/services/cookie_service.dart';
@@ -8,6 +9,7 @@ import '../../core/services/notification_service.dart';
 import '../../core/services/quiz_ai_service.dart';
 import '../../core/services/zip_export_service.dart';
 import '../../data/network/lms_api_client.dart';
+import 'settings_provider.dart';
 
 final logServiceProvider = Provider<LogService>((ref) {
   return LogService();
@@ -40,7 +42,9 @@ final dioProvider = Provider<Dio>((ref) {
       },
       onResponse: (response, handler) {
         final dataStr = response.data.toString();
-        final preview = dataStr.length > 500 ? '${dataStr.substring(0, 500)}... [truncated]' : dataStr;
+        final preview = dataStr.length > 500
+            ? '${dataStr.substring(0, 500)}... [truncated]'
+            : dataStr;
         logService.http(
           'DIO_RESP',
           '${response.statusCode} ${response.requestOptions.uri}',
@@ -63,7 +67,15 @@ final dioProvider = Provider<Dio>((ref) {
 });
 
 final cacheServiceProvider = Provider<CacheService>((ref) {
-  return CacheService();
+  final cache = CacheService(
+    isEnabled: () => ref.read(settingsProvider).enableOfflineCache,
+    defaultTtl: () => Duration(hours: ref.read(settingsProvider).cacheTtlHours),
+  );
+  ref.listen(
+    settingsProvider.select((s) => (s.enableOfflineCache, s.cacheTtlHours)),
+    (_, _) => cache.invalidatePendingWrites(),
+  );
+  return cache;
 });
 
 final cookieServiceProvider = Provider<CookieService>((ref) {

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'sso_progress.dart';
 
 enum AuthStatus {
   initial,
@@ -38,18 +39,49 @@ class SsoResponse {
   });
 
   factory SsoResponse.fromJson(Map<String, dynamic> json) {
+    // Support terminal SSE result format: {"status": 200, "data": {...}}
+    // as well as direct JSON response format: {"success": true, ...}
+    final Map<String, dynamic> payload;
+    final int status;
+    if (json.containsKey('data') && json['data'] is Map<String, dynamic>) {
+      payload = json['data'] as Map<String, dynamic>;
+      status = (json['status'] as num?)?.toInt() ?? 200;
+    } else {
+      payload = json;
+      status = (json['status'] as num?)?.toInt() ?? 200;
+    }
+
+    final rawSuccess = payload['success'] as bool? ?? (status < 400 && payload.containsKey('token'));
+    final captchaImg = payload['captchaImage'] as String?;
+    final sessToken = payload['sessionToken'] as String?;
+    final lmsUrl = payload['lmsLoginUrl'] as String?;
+    final token = payload['token'] as String?;
+
+    // Check if manual captcha is required or if this is a captcha initialization challenge
+    final bool requireManual = (payload['requireManualCaptcha'] as bool? ?? false) ||
+        (captchaImg != null && sessToken != null && token == null && lmsUrl == null);
+
+    // If manual captcha is required, treat as challenge rather than authenticated success
+    final bool finalSuccess = requireManual ? false : rawSuccess;
+
+    // Error message fallback
+    final String? err = payload['error'] as String? ??
+        (status >= 400 || (!finalSuccess && !requireManual)
+            ? (payload['message'] as String? ?? payload['lastError'] as String?)
+            : null);
+
     return SsoResponse(
-      success: json['success'] as bool? ?? false,
-      uid: json['uid'] as String?,
-      token: json['token'] as String?,
-      appAccessToken: json['appAccessToken'] as String?,
-      lmsLoginUrl: json['lmsLoginUrl'] as String?,
-      expiresAt: (json['expiresAt'] as num?)?.toInt(),
-      autoSolved: json['autoSolved'] as bool? ?? false,
-      requireManualCaptcha: json['requireManualCaptcha'] as bool? ?? false,
-      sessionToken: json['sessionToken'] as String?,
-      captchaImage: json['captchaImage'] as String?,
-      error: json['error'] as String?,
+      success: finalSuccess,
+      uid: payload['uid'] as String?,
+      token: token,
+      appAccessToken: payload['appAccessToken'] as String?,
+      lmsLoginUrl: lmsUrl,
+      expiresAt: (payload['expiresAt'] as num?)?.toInt(),
+      autoSolved: payload['autoSolved'] as bool? ?? false,
+      requireManualCaptcha: requireManual,
+      sessionToken: sessToken,
+      captchaImage: captchaImg,
+      error: err,
     );
   }
 
@@ -149,6 +181,8 @@ class AuthState {
   final String? errorMessage;
   final SsoResponse? pendingCaptcha;
   final String? statusMessage;
+  final SsoProgress? progress;
+  final List<SsoProgress> progressHistory;
 
   const AuthState({
     this.status = AuthStatus.initial,
@@ -156,6 +190,8 @@ class AuthState {
     this.errorMessage,
     this.pendingCaptcha,
     this.statusMessage,
+    this.progress,
+    this.progressHistory = const [],
   });
 
   bool get isAuthenticated =>
@@ -163,13 +199,19 @@ class AuthState {
       session != null &&
       session!.isValid;
 
+  bool get isProcessing =>
+      status == AuthStatus.connectingGateway || status == AuthStatus.loggingInMoodle;
+
   AuthState copyWith({
     AuthStatus? status,
     AuthSession? session,
     String? errorMessage,
     SsoResponse? pendingCaptcha,
     String? statusMessage,
+    SsoProgress? progress,
+    List<SsoProgress>? progressHistory,
     bool clearError = false,
+    bool clearProgress = false,
   }) {
     return AuthState(
       status: status ?? this.status,
@@ -177,6 +219,8 @@ class AuthState {
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       pendingCaptcha: pendingCaptcha ?? this.pendingCaptcha,
       statusMessage: statusMessage ?? this.statusMessage,
+      progress: clearProgress ? null : (progress ?? this.progress),
+      progressHistory: clearProgress ? const [] : (progressHistory ?? this.progressHistory),
     );
   }
 }

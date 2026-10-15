@@ -12,32 +12,55 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _currentIndex = 1; // Center: Dashboard is the default prominent landing tab
+  late final PageController _pageController;
 
   final List<Widget> _screens = const [
-    CoursesScreen(),   // Left: MyCourses
-    DashboardScreen(), // Center: Dashboard
-    SettingsScreen(),  // Right: Settings
+    _KeepAlivePage(child: CoursesScreen()),   // Left: MyCourses
+    _KeepAlivePage(child: DashboardScreen()), // Center: Dashboard
+    _KeepAlivePage(child: SettingsScreen()),  // Right: Settings
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: _currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _onDestinationSelected(int index) {
+    if (_currentIndex == index) return;
+    setState(() {
+      _currentIndex = index;
+    });
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _onPageChanged(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        child: KeyedSubtree(
-          key: ValueKey<int>(_currentIndex),
-          child: _screens[_currentIndex],
-        ),
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: _onPageChanged,
+        children: _screens,
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
-        onDestinationSelected: (int index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
+        onDestinationSelected: _onDestinationSelected,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.school_outlined),
@@ -57,5 +80,25 @@ class _HomeShellState extends State<HomeShell> {
         ],
       ),
     );
+  }
+}
+
+class _KeepAlivePage extends StatefulWidget {
+  final Widget child;
+  const _KeepAlivePage({required this.child});
+
+  @override
+  State<_KeepAlivePage> createState() => _KeepAlivePageState();
+}
+
+class _KeepAlivePageState extends State<_KeepAlivePage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
   }
 }

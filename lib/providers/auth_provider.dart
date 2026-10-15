@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/cookie_service.dart';
 import '../../data/models/auth_state.dart';
@@ -9,6 +10,7 @@ class AuthNotifier extends Notifier<AuthState> {
   LmsApiClient get _apiClient => ref.read(lmsApiClientProvider);
   CookieService get _cookieService => ref.read(cookieServiceProvider);
   bool _isAutoLoggingIn = false;
+  CancelToken? _loginCancelToken;
 
   @override
   AuthState build() {
@@ -106,12 +108,32 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  void cancelLogin() {
+    _loginCancelToken?.cancel('User cancelled login');
+    _loginCancelToken = null;
+    state = state.copyWith(
+      status: AuthStatus.initial,
+      clearError: true,
+      clearProgress: true,
+      statusMessage: null,
+    );
+  }
+
   Future<bool> login({
     required String uid,
     required String password,
     bool isAutoLogin = false,
     bool isBackground = false,
   }) async {
+    // Prevent duplicate submission while a request is already active
+    if (state.isProcessing && _loginCancelToken != null && !_loginCancelToken!.isCancelled) {
+      return false;
+    }
+
+    _loginCancelToken?.cancel('New login initiated');
+    final cancelToken = CancelToken();
+    _loginCancelToken = cancelToken;
+
     final settings = ref.read(settingsProvider);
     final apiToken = settings.ssoApiToken.isNotEmpty ? settings.ssoApiToken : 'dont_use_please';
 
@@ -121,6 +143,7 @@ class AuthNotifier extends Notifier<AuthState> {
           ? 'Session expired. Automatically signing in...'
           : 'Connecting to Cloud SSO Gateway...',
       clearError: true,
+      clearProgress: true,
     );
 
     try {
@@ -129,10 +152,24 @@ class AuthNotifier extends Notifier<AuthState> {
         password: password,
         apiToken: apiToken,
         gatewayUrl: settings.ssoGatewayUrl,
+        cancelToken: cancelToken,
+        onProgress: (progress) {
+          if (cancelToken.isCancelled) return;
+          state = state.copyWith(
+            progress: progress,
+            progressHistory: [...state.progressHistory, progress],
+            statusMessage: progress.message,
+          );
+        },
         onStatusUpdate: (msg) {
+          if (cancelToken.isCancelled) return;
           state = state.copyWith(statusMessage: msg);
         },
       );
+
+      if (cancelToken.isCancelled) {
+        return false;
+      }
 
       // State 1: Direct Success
       if (ssoResp.success && ssoResp.lmsLoginUrl != null) {
@@ -162,6 +199,16 @@ class AuthNotifier extends Notifier<AuthState> {
 
       // State 2: Manual Captcha Required
       if (ssoResp.requireManualCaptcha) {
+        // If no usable image or session exists (e.g. CUIMS was unavailable), show retry option
+        if (ssoResp.captchaImage == null || ssoResp.sessionToken == null) {
+          state = state.copyWith(
+            status: AuthStatus.error,
+            errorMessage: ssoResp.error ?? 'CAPTCHA verification needed, but portal image is unavailable. Please retry.',
+            clearProgress: true,
+          );
+          return false;
+        }
+
         state = state.copyWith(
           status: AuthStatus.captchaRequired,
           pendingCaptcha: ssoResp,
@@ -174,14 +221,23 @@ class AuthNotifier extends Notifier<AuthState> {
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: ssoResp.error ?? 'Authentication failed. Please verify credentials.',
+        clearProgress: true,
       );
       return false;
     } catch (e) {
+      if (cancelToken.isCancelled) {
+        return false;
+      }
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: e.toString().replaceFirst('Exception: ', ''),
+        clearProgress: true,
       );
       return false;
+    } finally {
+      if (_loginCancelToken == cancelToken) {
+        _loginCancelToken = null;
+      }
     }
   }
 
@@ -195,9 +251,14 @@ class AuthNotifier extends Notifier<AuthState> {
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: 'Captcha session expired. Please log in again.',
+        clearProgress: true,
       );
       return false;
     }
+
+    _loginCancelToken?.cancel('New captcha submission initiated');
+    final cancelToken = CancelToken();
+    _loginCancelToken = cancelToken;
 
     final settings = ref.read(settingsProvider);
     final apiToken = settings.ssoApiToken.isNotEmpty ? settings.ssoApiToken : 'dont_use_please';
@@ -206,6 +267,7 @@ class AuthNotifier extends Notifier<AuthState> {
       status: AuthStatus.connectingGateway,
       statusMessage: 'Verifying Captcha with Gateway...',
       clearError: true,
+      clearProgress: true,
     );
 
     try {
@@ -216,10 +278,24 @@ class AuthNotifier extends Notifier<AuthState> {
         sessionToken: sessionToken,
         apiToken: apiToken,
         gatewayUrl: settings.ssoGatewayUrl,
+        cancelToken: cancelToken,
+        onProgress: (progress) {
+          if (cancelToken.isCancelled) return;
+          state = state.copyWith(
+            progress: progress,
+            progressHistory: [...state.progressHistory, progress],
+            statusMessage: progress.message,
+          );
+        },
         onStatusUpdate: (msg) {
+          if (cancelToken.isCancelled) return;
           state = state.copyWith(statusMessage: msg);
         },
       );
+
+      if (cancelToken.isCancelled) {
+        return false;
+      }
 
       if (ssoResp.success && ssoResp.lmsLoginUrl != null) {
         state = state.copyWith(
@@ -246,26 +322,40 @@ class AuthNotifier extends Notifier<AuthState> {
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: ssoResp.error ?? 'Incorrect captcha. Please try again.',
+        clearProgress: true,
       );
       return false;
     } catch (e) {
+      if (cancelToken.isCancelled) {
+        return false;
+      }
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: e.toString().replaceFirst('Exception: ', ''),
+        clearProgress: true,
       );
       return false;
+    } finally {
+      if (_loginCancelToken == cancelToken) {
+        _loginCancelToken = null;
+      }
     }
   }
 
   void cancelCaptcha() {
+    _loginCancelToken?.cancel('User cancelled captcha');
+    _loginCancelToken = null;
     state = state.copyWith(
       status: AuthStatus.initial,
       pendingCaptcha: null,
       clearError: true,
+      clearProgress: true,
     );
   }
 
   Future<void> logout() async {
+    _loginCancelToken?.cancel('User logged out');
+    _loginCancelToken = null;
     await _cookieService.clearSession(clearCredentials: true);
     state = const AuthState(status: AuthStatus.initial);
   }

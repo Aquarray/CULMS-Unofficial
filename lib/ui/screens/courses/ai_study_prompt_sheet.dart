@@ -1,22 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../data/models/course_content.dart';
+import '../../../providers/settings_provider.dart';
+import '../../widgets/ai_brand_icons.dart';
 
 /// Modal sheet for "Learn with AI" feature.
 /// Allows the user to select their AI provider (Gemini or ChatGPT),
 /// copies an exam-ready learning prompt with the Subject header,
 /// reminds them to attach the unit ZIP file, and launches the AI app/web.
-class AiStudyPromptSheet extends StatefulWidget {
+class AiStudyPromptSheet extends ConsumerStatefulWidget {
   final String courseName;
   final CourseUnit unit;
   final VoidCallback? onExportZip;
+  final int? itemsCount;
+  final bool? isChapter;
+  final String? chapterNumber;
 
   const AiStudyPromptSheet({
     super.key,
     required this.courseName,
     required this.unit,
     this.onExportZip,
+    this.itemsCount,
+    this.isChapter,
+    this.chapterNumber,
   });
 
   /// Static helper to display the sheet
@@ -25,6 +34,9 @@ class AiStudyPromptSheet extends StatefulWidget {
     required String courseName,
     required CourseUnit unit,
     VoidCallback? onExportZip,
+    int? itemsCount,
+    bool? isChapter,
+    String? chapterNumber,
   }) {
     showModalBottomSheet(
       context: context,
@@ -36,15 +48,102 @@ class AiStudyPromptSheet extends StatefulWidget {
         courseName: courseName,
         unit: unit,
         onExportZip: onExportZip,
+        itemsCount: itemsCount,
+        isChapter: isChapter,
+        chapterNumber: chapterNumber,
       ),
     );
+  }
+
+  static String resolveUnitNumber(CourseUnit? unit, String unitTitle) {
+    if (unit != null) {
+      final unitMatch = RegExp(r'(?:unit)[\s\-_]*(\d+)', caseSensitive: false).firstMatch(unit.parentUnit) ??
+          RegExp(r'(?:unit)[\s\-_]*(\d+)', caseSensitive: false).firstMatch(unit.title);
+      if (unitMatch != null) {
+        return unitMatch.group(1)!;
+      }
+      final digits = RegExp(r'\d+').firstMatch(unit.parentUnit);
+      if (digits != null) {
+        return digits.group(0)!;
+      }
+      if (unit.sectionNumber > 0) {
+        return unit.sectionNumber.toString();
+      }
+    }
+    final titleMatch = RegExp(r'(?:unit)[\s\-_]*(\d+)', caseSensitive: false).firstMatch(unitTitle);
+    if (titleMatch != null) {
+      return titleMatch.group(1)!;
+    }
+    final titleDigits = RegExp(r'\d+').firstMatch(unitTitle);
+    if (titleDigits != null) {
+      return titleDigits.group(0)!;
+    }
+    return '1';
+  }
+
+  static String resolveChapterNumber(CourseUnit? unit, String unitTitle, {bool? isChapter}) {
+    if (isChapter == false) {
+      return '';
+    }
+
+    final targetText = (unit != null && unit.title.isNotEmpty) ? unit.title : unitTitle;
+    final match = RegExp(r'(?:chapter|chap|ch)[\s\-_]*(\d+)', caseSensitive: false).firstMatch(targetText);
+    if (match != null) {
+      return match.group(1)!;
+    }
+
+    if (isChapter == true) {
+      final numMatch = RegExp(r'^\s*(\d+)').firstMatch(targetText);
+      if (numMatch != null) {
+        return numMatch.group(1)!;
+      }
+      if (unit != null && unit.sectionNumber > 0) {
+        return unit.sectionNumber.toString();
+      }
+    }
+
+    return '';
+  }
+
+  static String resolveItemsCount(CourseUnit? unit, int? itemsCount) {
+    if (itemsCount != null) {
+      return itemsCount.toString();
+    }
+    if (unit != null) {
+      final valid = unit.activities.where((a) =>
+          a.iconType == 'file' || a.iconType == 'folder' || a.iconType == 'page');
+      return (valid.isNotEmpty ? valid.length : unit.activities.length).toString();
+    }
+    return '0';
   }
 
   /// Builds the structured exam-ready study prompt with Subject on top.
   static String buildPrompt({
     required String courseName,
     required String unitTitle,
+    String? template,
+    CourseUnit? unit,
+    int? itemsCount,
+    bool? isChapter,
+    String? chapterNumber,
   }) {
+    if (template != null && template.trim().isNotEmpty) {
+      final cleanSubject = courseName.trim();
+      final unitNum = resolveUnitNumber(unit, unitTitle);
+      final chapNum = chapterNumber ?? resolveChapterNumber(unit, unitTitle, isChapter: isChapter);
+      final count = resolveItemsCount(unit, itemsCount);
+
+      return template
+          .replaceAll('{%subject_name%}', cleanSubject)
+          .replaceAll('{%course_name%}', cleanSubject)
+          .replaceAll('{%unit_number%}', unitNum)
+          .replaceAll('{%unit%}', unitNum)
+          .replaceAll('{%chapter_number%}', chapNum)
+          .replaceAll('{%chapter%}', chapNum)
+          .replaceAll('{%items_count%}', count)
+          .replaceAll('{%number_of_items%}', count);
+    }
+
     final cleanSubject = courseName.trim();
     final subjectLine = unitTitle.trim().isNotEmpty
         ? 'Subject: $cleanSubject - ${unitTitle.trim()}'
@@ -85,16 +184,24 @@ CONSTRAINTS:
   }
 
   @override
-  State<AiStudyPromptSheet> createState() => _AiStudyPromptSheetState();
+  ConsumerState<AiStudyPromptSheet> createState() => _AiStudyPromptSheetState();
 }
 
-class _AiStudyPromptSheetState extends State<AiStudyPromptSheet> {
+class _AiStudyPromptSheetState extends ConsumerState<AiStudyPromptSheet> {
   bool _showPromptPreview = false;
 
-  String get _promptText => AiStudyPromptSheet.buildPrompt(
-        courseName: widget.courseName,
-        unitTitle: widget.unit.title,
-      );
+  String get _promptText {
+    final settings = ref.read(settingsProvider);
+    return AiStudyPromptSheet.buildPrompt(
+      courseName: widget.courseName,
+      unitTitle: widget.unit.title,
+      template: settings.aiStudyPromptTemplate,
+      unit: widget.unit,
+      itemsCount: widget.itemsCount,
+      isChapter: widget.isChapter,
+      chapterNumber: widget.chapterNumber,
+    );
+  }
 
   Future<void> _selectProvider({
     required String name,
@@ -167,18 +274,6 @@ class _AiStudyPromptSheetState extends State<AiStudyPromptSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Center drag handle
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.white24 : Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
 
             // Header: Title & Subject
             Row(
@@ -329,7 +424,7 @@ class _AiStudyPromptSheetState extends State<AiStudyPromptSheet> {
             _AiProviderTile(
               title: 'Google Gemini',
               subtitle: 'Opens gemini.google.com with prompt copied',
-              iconData: Icons.auto_awesome_rounded,
+              iconWidget: const GeminiIcon(size: 22, useGradient: true),
               accentColor: const Color(0xFF3B82F6),
               isDark: isDark,
               onTap: () => _selectProvider(
@@ -343,7 +438,7 @@ class _AiStudyPromptSheetState extends State<AiStudyPromptSheet> {
             _AiProviderTile(
               title: 'OpenAI ChatGPT',
               subtitle: 'Opens chatgpt.com with prompt copied',
-              iconData: Icons.chat_bubble_outline_rounded,
+              iconWidget: const OpenAiIcon(size: 22, color: Color(0xFF10A37F)),
               accentColor: const Color(0xFF10A37F),
               isDark: isDark,
               onTap: () => _selectProvider(
@@ -431,7 +526,7 @@ class _AiStudyPromptSheetState extends State<AiStudyPromptSheet> {
 class _AiProviderTile extends StatelessWidget {
   final String title;
   final String subtitle;
-  final IconData iconData;
+  final Widget iconWidget;
   final Color accentColor;
   final bool isDark;
   final VoidCallback onTap;
@@ -439,7 +534,7 @@ class _AiProviderTile extends StatelessWidget {
   const _AiProviderTile({
     required this.title,
     required this.subtitle,
-    required this.iconData,
+    required this.iconWidget,
     required this.accentColor,
     required this.isDark,
     required this.onTap,
@@ -460,7 +555,7 @@ class _AiProviderTile extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isDark ? 0.2 : 0.03),
+              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
@@ -471,10 +566,14 @@ class _AiProviderTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: accentColor.withOpacity(0.12),
+                color: accentColor.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
-              child: Icon(iconData, color: accentColor, size: 20),
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: Center(child: iconWidget),
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(

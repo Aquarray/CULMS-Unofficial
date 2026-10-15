@@ -914,7 +914,7 @@ class _AppBrowserScreenState extends ConsumerState<AppBrowserScreen> {
                   value: 'external',
                   child: Row(
                     children: [
-                      Icon(Icons.open_in_browser_rounded, size: 20),
+                      Icon(Icons.language_rounded, size: 20),
                       SizedBox(width: 10),
                       Text('Open in System Browser'),
                     ],

@@ -3,6 +3,7 @@ import '../../data/models/course.dart';
 import '../../data/models/course_content.dart';
 import 'app_providers.dart';
 import 'auth_provider.dart';
+import 'settings_provider.dart';
 
 class CoursesState {
   final List<Course> allCourses;
@@ -73,6 +74,9 @@ class CoursesState {
 class CoursesNotifier extends Notifier<CoursesState> {
   @override
   CoursesState build() {
+    ref.watch(
+      settingsProvider.select((s) => (s.enableOfflineCache, s.cacheTtlHours)),
+    );
     final auth = ref.watch(authProvider);
     if (auth.isAuthenticated && auth.session != null) {
       Future.microtask(() => loadCourses());
@@ -95,7 +99,7 @@ class CoursesNotifier extends Notifier<CoursesState> {
 
       state = state.copyWith(
         allCourses: courses,
-        isLoading: false,
+        isLoading: false
       );
     } catch (e) {
       state = state.copyWith(
@@ -114,10 +118,13 @@ class CoursesNotifier extends Notifier<CoursesState> {
   }
 }
 
-final coursesProvider = NotifierProvider<CoursesNotifier, CoursesState>(CoursesNotifier.new);
+final coursesProvider = NotifierProvider<CoursesNotifier, CoursesState>(CoursesNotifier.new,);
 
 /// Family provider for course units
-final courseUnitsProvider = FutureProvider.family<List<CourseUnit>, int>((ref, courseId) async {
+final courseUnitsProvider = FutureProvider.family<List<CourseUnit>, int>((ref, courseId,) async {
+  ref.watch(
+    settingsProvider.select((s) => (s.enableOfflineCache, s.cacheTtlHours)),
+  );
   final auth = ref.watch(authProvider);
   if (!auth.isAuthenticated || auth.session == null) return [];
 
@@ -126,7 +133,10 @@ final courseUnitsProvider = FutureProvider.family<List<CourseUnit>, int>((ref, c
 });
 
 /// Family provider for extracted resource/folder content
-final lmsContentProvider = FutureProvider.family<LmsExtractedContent, String>((ref, url) async {
+final lmsContentProvider = FutureProvider.family<LmsExtractedContent, String>((ref, url,) async {
+  ref.watch(
+    settingsProvider.select((s) => (s.enableOfflineCache, s.cacheTtlHours)),
+  );
   final auth = ref.watch(authProvider);
   if (!auth.isAuthenticated || auth.session == null) {
     throw Exception('Authentication required');

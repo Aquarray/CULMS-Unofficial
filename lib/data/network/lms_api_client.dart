@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:html/parser.dart' as html_parser;
 import '../../core/config/app_constants.dart';
+import '../../core/network/sse_parser.dart';
 import '../../core/services/cache_service.dart';
 import '../../core/services/log_service.dart';
 import '../models/assignment.dart';
@@ -9,6 +12,7 @@ import '../models/auth_state.dart';
 import '../models/calendar_event.dart';
 import '../models/course.dart';
 import '../models/course_content.dart';
+import '../models/sso_progress.dart';
 
 class LmsApiClient {
   final Dio dio;
@@ -23,12 +27,14 @@ class LmsApiClient {
     this.onSessionExpired,
   });
 
-  /// Step 2.1 & 2.2: Initial Login Payload and Delay Handling
+  /// Step 2.1 & 2.2: Initial Login with live SSE Progress Streaming
   Future<SsoResponse> loginSso({
     required String uid,
     required String password,
     String? apiToken,
     String? gatewayUrl,
+    CancelToken? cancelToken,
+    void Function(SsoProgress progress)? onProgress,
     void Function(String message)? onStatusUpdate,
   }) async {
     final endpoint = (gatewayUrl != null && gatewayUrl.isNotEmpty)
@@ -38,39 +44,172 @@ class LmsApiClient {
         ? apiToken
         : 'dont_use_please';
 
+    return _executeSsoRequest(
+      endpoint: endpoint,
+      body: {
+        'uid': uid.trim(),
+        'password': password.trim()
+      },
+      apiToken: token,
+      cancelToken: cancelToken,
+      onProgress: onProgress,
+      onStatusUpdate: onStatusUpdate,
+    );
+  }
+
+  /// Step 2.2 State 3: Captcha Submission with live SSE Progress Streaming
+  Future<SsoResponse> submitCaptcha({
+    required String uid,
+    required String password,
+    required String captcha,
+    required String sessionToken,
+    String? apiToken,
+    String? gatewayUrl,
+    CancelToken? cancelToken,
+    void Function(SsoProgress progress)? onProgress,
+    void Function(String message)? onStatusUpdate,
+  }) async {
+    final endpoint = (gatewayUrl != null && gatewayUrl.isNotEmpty)
+        ? gatewayUrl
+        : AppConstants.defaultSsoUrl;
+    final token = (apiToken != null && apiToken.isNotEmpty)
+        ? apiToken
+        : 'dont_use_please';
+
+    return _executeSsoRequest(
+      endpoint: endpoint,
+      body: {
+        'action': 'login',
+        'uid': uid.trim(),
+        'password': password.trim(),
+        'captcha': captcha.trim(),
+        'sessionToken': sessionToken,
+      },
+      apiToken: token,
+      cancelToken: cancelToken,
+      onProgress: onProgress,
+      onStatusUpdate: onStatusUpdate,
+    );
+  }
+
+  /// Manual CAPTCHA initialization request
+  Future<SsoResponse> initCaptcha({
+    required String uid,
+    String? apiToken,
+    String? gatewayUrl,
+    CancelToken? cancelToken,
+    void Function(SsoProgress progress)? onProgress,
+    void Function(String message)? onStatusUpdate,
+  }) async {
+    final endpoint = (gatewayUrl != null && gatewayUrl.isNotEmpty)
+        ? gatewayUrl
+        : AppConstants.defaultSsoUrl;
+    final token = (apiToken != null && apiToken.isNotEmpty)
+        ? apiToken
+        : 'dont_use_please';
+
+    return _executeSsoRequest(
+      endpoint: endpoint,
+      body: {
+        'action': 'captcha',
+        'uid': uid.trim()
+      },
+      apiToken: token,
+      cancelToken: cancelToken,
+      onProgress: onProgress,
+      onStatusUpdate: onStatusUpdate,
+    );
+  }
+
+  /// Internal unified dispatcher that handles both Server-Sent Events (SSE) and JSON responses.
+  Future<SsoResponse> _executeSsoRequest({
+    required String endpoint,
+    required Map<String, dynamic> body,
+    required String apiToken,
+    CancelToken? cancelToken,
+    void Function(SsoProgress progress)? onProgress,
+    void Function(String message)? onStatusUpdate,
+  }) async {
     onStatusUpdate?.call('Connecting to Cloud SSO Gateway...');
 
     try {
-      final response = await dio.post(
+      final response = await dio.post<ResponseBody>(
         endpoint,
-        data: {
-          'uid': uid.trim(),
-          'password': password.trim(),
-        },
+        data: body,
+        cancelToken: cancelToken,
         options: Options(
+          responseType: ResponseType.stream,
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer $token',
+            'Authorization': 'Bearer $apiToken',
+            'Accept': 'text/event-stream',
           },
-          // Generous timeout to accommodate Vercel gateway 5-second processing constraint
+          validateStatus: (status) => true,
           sendTimeout: const Duration(seconds: 40),
           receiveTimeout: const Duration(seconds: 40),
         ),
       );
 
-      final data = response.data is String
-          ? json.decode(response.data as String) as Map<String, dynamic>
-          : response.data as Map<String, dynamic>;
+      final responseBody = response.data;
+      if (responseBody == null) {
+        return const SsoResponse(
+          success: false,
+          error: 'Empty response received from SSO gateway.',
+        );
+      }
 
-      return SsoResponse.fromJson(data);
+      final contentType = response.headers.value('content-type')?.toLowerCase() ?? '';
+
+      // Check if streaming SSE response
+      if (contentType.contains('text/event-stream')) {
+        return await _handleSseStream(
+          responseBody.stream,
+          onProgress: onProgress,
+          onStatusUpdate: onStatusUpdate,
+        );
+      }
+
+      // Non-streaming response: read entire body as string (supports JSON 401, legacy JSON, etc.)
+      final bodyString = await utf8.decodeStream(responseBody.stream);
+      if (bodyString.trim().isEmpty) {
+        return SsoResponse(
+          success: false,
+          error: response.statusCode != null && response.statusCode! >= 400
+              ? 'SSO gateway error (${response.statusCode})'
+              : 'Empty response from SSO gateway.',
+        );
+      }
+
+      try {
+        final decoded = json.decode(bodyString);
+        if (decoded is Map<String, dynamic>) {
+          return SsoResponse.fromJson({
+            ...decoded,
+            'status': response.statusCode ?? 200,
+          });
+        }
+      } catch (_) {}
+
+      return SsoResponse(
+        success: false,
+        error: response.statusCode != null && response.statusCode! >= 400
+            ? 'Gateway error (${response.statusCode}): $bodyString'
+            : bodyString,
+      );
     } on DioException catch (e) {
-      if (e.response?.data != null) {
-        try {
-          final data = e.response!.data is String
-              ? json.decode(e.response!.data as String) as Map<String, dynamic>
-              : e.response!.data as Map<String, dynamic>;
-          return SsoResponse.fromJson(data);
-        } catch (_) {}
+      if (e.type == DioExceptionType.cancel) {
+        return const SsoResponse(
+          success: false,
+          error: 'Login request cancelled.',
+        );
+      }
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        return const SsoResponse(
+          success: false,
+          error: 'Connection timeout. The gateway took longer than 30s. Please retry.',
+        );
       }
       return SsoResponse(
         success: false,
@@ -79,73 +218,102 @@ class LmsApiClient {
     } catch (e) {
       return SsoResponse(
         success: false,
-        error: e.toString(),
+        error: e.toString().replaceFirst('Exception: ', ''),
       );
     }
   }
 
-  /// Step 2.2 State 3: Captcha Submission
-  Future<SsoResponse> submitCaptcha({
-    required String uid,
-    required String password,
-    required String captcha,
-    required String sessionToken,
-    String? apiToken,
-    String? gatewayUrl,
+  /// Parses an incoming SSE byte stream into progress updates and terminal result.
+  Future<SsoResponse> _handleSseStream(
+    Stream<Uint8List> byteStream, {
+    void Function(SsoProgress progress)? onProgress,
     void Function(String message)? onStatusUpdate,
   }) async {
-    final endpoint = (gatewayUrl != null && gatewayUrl.isNotEmpty)
-        ? gatewayUrl
-        : AppConstants.defaultSsoUrl;
-    final token = (apiToken != null && apiToken.isNotEmpty)
-        ? apiToken
-        : 'dont_use_please';
+    final completer = Completer<SsoResponse>();
+    final sseStream = SseParser.parseByteStream(byteStream);
+    StreamSubscription<SseEvent>? sub;
 
-    onStatusUpdate?.call('Verifying captcha with SSO Gateway...');
+    sub = sseStream.listen(
+      (event) {
+        if (completer.isCompleted) return;
 
-    try {
-      final response = await dio.post(
-        endpoint,
-        data: {
-          'uid': uid.trim(),
-          'password': password.trim(),
-          'captcha': captcha.trim(),
-          'sessionToken': sessionToken,
-        },
-        options: Options(
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-          sendTimeout: const Duration(seconds: 40),
-          receiveTimeout: const Duration(seconds: 40),
-        ),
-      );
+        if (event.event == 'progress') {
+          try {
+            final decoded = json.decode(event.data);
+            if (decoded is Map<String, dynamic> &&
+                decoded.containsKey('stage') &&
+                decoded.containsKey('message')) {
+              final progress = SsoProgress.fromJson(decoded);
+              onProgress?.call(progress);
+              onStatusUpdate?.call(progress.message);
+            } else {
+              completer.complete(
+                const SsoResponse(
+                  success: false,
+                  error: 'Malformed progress event received from SSO gateway.',
+                ),
+              );
+              sub?.cancel();
+            }
+          } catch (_) {
+            completer.complete(
+              const SsoResponse(
+                success: false,
+                error: 'Invalid JSON in progress event from SSO gateway.',
+              ),
+            );
+            sub?.cancel();
+          }
+        } else if (event.event == 'result') {
+          try {
+            final decoded = json.decode(event.data);
+            if (decoded is Map<String, dynamic>) {
+              final ssoResp = SsoResponse.fromJson(decoded);
+              completer.complete(ssoResp);
+            } else {
+              completer.complete(
+                const SsoResponse(
+                  success: false,
+                  error: 'Malformed result payload from SSO gateway.',
+                ),
+              );
+            }
+          } catch (e) {
+            completer.complete(
+              SsoResponse(
+                success: false,
+                error: 'Failed to decode SSO result: $e',
+              ),
+            );
+          }
+          sub?.cancel();
+        }
+        // Comments (like ": heartbeat") and unknown event names are ignored safely
+      },
+      onError: (err) {
+        if (!completer.isCompleted) {
+          completer.complete(
+            SsoResponse(
+              success: false,
+              error: 'Connection error during SSO stream: $err',
+            ),
+          );
+        }
+      },
+      onDone: () {
+        if (!completer.isCompleted) {
+          completer.complete(
+            const SsoResponse(
+              success: false,
+              error: 'SSO connection closed before login completed. Please retry.',
+            ),
+          );
+        }
+      },
+      cancelOnError: true,
+    );
 
-      final data = response.data is String
-          ? json.decode(response.data as String) as Map<String, dynamic>
-          : response.data as Map<String, dynamic>;
-
-      return SsoResponse.fromJson(data);
-    } on DioException catch (e) {
-      if (e.response?.data != null) {
-        try {
-          final data = e.response!.data is String
-              ? json.decode(e.response!.data as String) as Map<String, dynamic>
-              : e.response!.data as Map<String, dynamic>;
-          return SsoResponse.fromJson(data);
-        } catch (_) {}
-      }
-      return SsoResponse(
-        success: false,
-        error: e.message ?? 'Network error during captcha submission',
-      );
-    } catch (e) {
-      return SsoResponse(
-        success: false,
-        error: e.toString(),
-      );
-    }
+    return completer.future;
   }
 
   /// Step 2.2 State 1: Follow Moodle autologin URL, extract MoodleSession cookie and sesskey
@@ -155,8 +323,8 @@ class LmsApiClient {
     required String lmsLoginUrl,
     void Function(String message)? onStatusUpdate,
   }) async {
-    onStatusUpdate?.call('LMS SSO Authorization Successful! Initializing Moodle Session...');
-    logService?.info('AUTH', 'Starting Moodle session initialization from: $lmsLoginUrl');
+    onStatusUpdate?.call('LMS SSO Authorization Successful! Initializing Moodle Session...',);
+    logService?.info('AUTH', 'Starting Moodle session initialization from: $lmsLoginUrl',);
 
     String? moodleSession;
     String? sesskey;
@@ -186,7 +354,7 @@ class LmsApiClient {
         final match = RegExp(r'MoodleSession=([^;]+)').firstMatch(header);
         if (match != null) {
           moodleSession = match.group(1);
-          logService?.info('AUTH', 'Found MoodleSession cookie: $moodleSession');
+          logService?.info('AUTH', 'Found MoodleSession cookie: $moodleSession',);
           break;
         }
       }
@@ -238,7 +406,7 @@ class LmsApiClient {
 
     // 2. Input pattern: <input type="hidden" name="sesskey" value="..." />
     if (sesskey == null) {
-      sesskeyMatch = RegExp(r'''name=["']sesskey["']\s+value=["']([a-zA-Z0-9]+)["']''').firstMatch(html);
+      sesskeyMatch = RegExp(r'''name=["']sesskey["']\s+value=["']([a-zA-Z0-9]+)["']''',).firstMatch(html);
       if (sesskeyMatch != null) {
         sesskey = sesskeyMatch.group(1);
       }
@@ -247,7 +415,7 @@ class LmsApiClient {
     // 3. Fallback: Query /my/ explicitly if first target was root /
     if (sesskey == null && moodleSession != null) {
       try {
-        logService?.info('AUTH', 'Fallback: Querying /my/ explicitly for sesskey');
+        logService?.info('AUTH', 'Fallback: Querying /my/ explicitly for sesskey',);
         final myPageResponse = await dio.get<String>(
           'https://lms.cuchd.in/my/',
           options: Options(
@@ -263,7 +431,7 @@ class LmsApiClient {
           sesskey = sesskeyMatch.group(1);
         }
       } catch (e) {
-        logService?.error('AUTH', 'Error querying /my/ for sesskey', e.toString());
+        logService?.error('AUTH', 'Error querying /my/ for sesskey', e.toString(),);
       }
     }
 
@@ -284,14 +452,14 @@ class LmsApiClient {
     String? moodleUserId;
     try {
       final uidMatch = RegExp(r'"userId":\s*(\d+)').firstMatch(html) ??
-          RegExp(r'data-userid=["''](\d+)["'']').firstMatch(html) ??
+          RegExp(r'data-userid=["''](\d+)["'']',).firstMatch(html) ??
           RegExp(r'user/profile\.php\?id=(\d+)').firstMatch(html);
       if (uidMatch != null) {
         moodleUserId = uidMatch.group(1);
       }
 
       // Check logininfo: "You are logged in as <a href=...>NAME</a>"
-      final loginInfoMatch = RegExp(r'user/profile\.php\?id=\d+["'']>([^<]+)</a>').firstMatch(html);
+      final loginInfoMatch = RegExp(r'user/profile\.php\?id=\d+["'']>([^<]+)</a>',).firstMatch(html);
       if (loginInfoMatch != null && loginInfoMatch.group(1)!.trim().isNotEmpty) {
         studentName = loginInfoMatch.group(1)!.trim();
       }
@@ -352,7 +520,7 @@ class LmsApiClient {
       if (response.statusCode == 302 || response.statusCode == 303) {
         final location = response.headers.value('location') ?? '';
         if (location.contains('login')) {
-          logService?.warning('AUTH', 'Session expired: redirected to $location');
+          logService?.warning('AUTH', 'Session expired: redirected to $location',);
           return false;
         }
       }
@@ -360,7 +528,7 @@ class LmsApiClient {
       if (response.statusCode == 200) {
         final data = response.data ?? '';
         if (data.contains('login/index.php') && !data.contains('login/logout.php')) {
-          logService?.warning('AUTH', 'Session expired: page contains login form');
+          logService?.warning('AUTH', 'Session expired: page contains login form',);
           return false;
         }
         return true;
@@ -381,7 +549,7 @@ class LmsApiClient {
           str.contains('"errorcode":"servicerequireslogin"') ||
           str.contains('"errorcode":"sessionerror"') ||
           (str.contains('login/index.php') && !str.contains('login/logout.php') && str.contains('id="login"'))) {
-        logService?.warning('API', 'Session expiry pattern detected in LMS response');
+        logService?.warning('API', 'Session expiry pattern detected in LMS response',);
         onSessionExpired?.call();
       }
     } catch (_) {}
@@ -415,7 +583,7 @@ class LmsApiClient {
         if (rootResp.data != null) {
           final rHtml = rootResp.data!;
           final uidMatch = RegExp(r'"userId":\s*(\d+)').firstMatch(rHtml) ??
-              RegExp(r'data-userid=["''](\d+)["'']').firstMatch(rHtml) ??
+              RegExp(r'data-userid=["''](\d+)["'']',).firstMatch(rHtml) ??
               RegExp(r'user/profile\.php\?id=(\d+)').firstMatch(rHtml);
           if (uidMatch != null) {
             resolvedUserId = uidMatch.group(1);
@@ -464,7 +632,7 @@ class LmsApiClient {
         // Also extract userId from profile page if not yet resolved
         if (resolvedUserId == null || resolvedUserId.isEmpty) {
           final uidMatch = RegExp(r'"userId":\s*(\d+)').firstMatch(profResp.data!) ??
-              RegExp(r'data-userid=["''](\d+)["'']').firstMatch(profResp.data!);
+              RegExp(r'data-userid=["''](\d+)["'']',).firstMatch(profResp.data!);
           if (uidMatch != null) {
             resolvedUserId = uidMatch.group(1);
           }
@@ -488,10 +656,12 @@ class LmsApiClient {
     bool forceRefresh = false,
   }) async {
     const cacheKey = AppConstants.keyCachedCourses;
+    final cacheGeneration = cacheService.generation;
 
     // Check offline cache first
     if (!forceRefresh) {
-      final cachedJson = await cacheService.getJson<String>(cacheKey);
+      final cachedJson = await cacheService.getJson<String>(cacheKey,
+        accountId: session.uid,);
       if (cachedJson != null) {
         final courses = Course.fromJsonList(cachedJson);
         if (courses.isNotEmpty) {
@@ -522,10 +692,10 @@ class LmsApiClient {
             "visible",
             "enddate",
             "courseimage",
-            "progress"
-          ]
-        }
-      }
+            "progress",
+          ],
+        },
+      },
     ];
 
     final response = await dio.post<dynamic>(
@@ -547,7 +717,9 @@ class LmsApiClient {
         : json.encode(response.data);
 
     // Save to cache
-    await cacheService.putJson(cacheKey, rawString);
+    await cacheService.putJson(cacheKey, rawString,
+      accountId: session.uid,
+      expectedGeneration: cacheGeneration,);
 
     return Course.fromJsonList(rawString);
   }
@@ -558,9 +730,11 @@ class LmsApiClient {
     bool forceRefresh = false,
   }) async {
     const cacheKey = AppConstants.keyCachedEvents;
+    final cacheGeneration = cacheService.generation;
 
     if (!forceRefresh) {
-      final cachedJson = await cacheService.getJson<String>(cacheKey);
+      final cachedJson = await cacheService.getJson<String>(cacheKey,
+        accountId: session.uid,);
       if (cachedJson != null) {
         final events = LmsCalendarEvent.fromJsonList(cachedJson);
         if (events.isNotEmpty) {
@@ -585,9 +759,9 @@ class LmsApiClient {
           "limitnum": 15,
           "timesortfrom": timesortFrom,
           "timesortto": timesortTo,
-          "limittononsuspendedevents": true
-        }
-      }
+          "limittononsuspendedevents": true,
+        },
+      },
     ];
 
     final response = await dio.post<dynamic>(
@@ -609,7 +783,9 @@ class LmsApiClient {
         : json.encode(response.data);
 
     // Save to cache
-    await cacheService.putJson(cacheKey, rawString);
+    await cacheService.putJson(cacheKey, rawString,
+      accountId: session.uid,
+      expectedGeneration: cacheGeneration,);
 
     return LmsCalendarEvent.fromJsonList(rawString);
   }
@@ -621,9 +797,11 @@ class LmsApiClient {
     bool forceRefresh = false,
   }) async {
     final cacheKey = '${AppConstants.keyCourseContentPrefix}$courseId';
+    final cacheGeneration = cacheService.generation;
 
     if (!forceRefresh) {
-      final cached = await cacheService.getJson<List<dynamic>>(cacheKey);
+      final cached = await cacheService.getJson<List<dynamic>>(cacheKey,
+        accountId: session.uid,);
       if (cached != null) {
         return cached.map((e) => CourseUnit.fromJson(e as Map<String, dynamic>)).toList();
       }
@@ -640,8 +818,8 @@ class LmsApiClient {
           {
             "index": 0,
             "methodname": "core_courseformat_get_state",
-            "args": {"courseid": courseId}
-          }
+            "args": {"courseid": courseId},
+          },
         ],
         options: Options(
           headers: {
@@ -711,7 +889,7 @@ class LmsApiClient {
                 typeName: typeName,
                 url: actUrl,
                 iconType: iconType,
-              ));
+              ),);
             }
           }
 
@@ -730,16 +908,18 @@ class LmsApiClient {
             category: CourseUnit.resolveCategory(title, secNum),
             parentUnit: CourseUnit.resolveParentUnit(title, secNum),
             activities: activities,
-          ));
+          ),);
         }
 
         if (units.isNotEmpty) {
-          await cacheService.putJson(cacheKey, units.map((u) => u.toJson()).toList());
+          await cacheService.putJson(cacheKey, units.map((u) => u.toJson()).toList(),
+            accountId: session.uid,
+            expectedGeneration: cacheGeneration,);
           return units;
         }
       }
     } catch (e) {
-      logService?.warning('COURSES', 'core_courseformat_get_state fallback to HTML: $e');
+      logService?.warning('COURSES', 'core_courseformat_get_state fallback to HTML: $e',);
     }
 
     // 2. Fallback: Parse HTML of course page directly
@@ -759,7 +939,7 @@ class LmsApiClient {
     final units = <CourseUnit>[];
 
     // Find all sections
-    final sectionElements = doc.querySelectorAll('li.section, .course-section, .sectionname');
+    final sectionElements = doc.querySelectorAll('li.section, .course-section, .sectionname',);
 
     if (sectionElements.isNotEmpty) {
       for (int i = 0; i < sectionElements.length; i++) {
@@ -768,7 +948,7 @@ class LmsApiClient {
         final summary = sec.querySelector('.summary, .content-summary')?.text.trim();
 
         final activities = <CourseActivity>[];
-        final activityCards = sec.querySelectorAll('.activity-item, li.activity');
+        final activityCards = sec.querySelectorAll('.activity-item, li.activity',);
         for (final act in activityCards) {
           final link = act.querySelector('a.aalink, a.stretched-link, a');
           final name = act.querySelector('.instancename')?.text.replaceAll(RegExp(r'\s+'), ' ').trim() ??
@@ -811,7 +991,7 @@ class LmsApiClient {
               typeName: typeName,
               url: href,
               iconType: iconType,
-            ));
+            ),);
           }
         }
 
@@ -825,7 +1005,7 @@ class LmsApiClient {
             category: CourseUnit.resolveCategory(title, i),
             parentUnit: CourseUnit.resolveParentUnit(title, i),
             activities: activities,
-          ));
+          ),);
         }
       }
     }
@@ -855,7 +1035,7 @@ class LmsApiClient {
             typeName: typeName,
             url: href,
             iconType: iconType,
-          ));
+          ),);
         }
       }
 
@@ -863,18 +1043,22 @@ class LmsApiClient {
         id: 'sec_all',
         title: 'Course Materials',
         activities: allActivities,
-      ));
+      ),);
     }
 
     // Cache parsed units
-    await cacheService.putJson(cacheKey, units.map((u) => u.toJson()).toList());
+    await cacheService.putJson(cacheKey, units.map((u) => u.toJson()).toList(),
+      accountId: session.uid,
+      expectedGeneration: cacheGeneration,);
     return units;
   }
 
   /// Invalidate cached units for a specific course
-  Future<void> clearCourseUnitsCache(int courseId) async {
+  Future<void> clearCourseUnitsCache(int courseId, {
+    required String accountId,
+  }) async {
     final cacheKey = '${AppConstants.keyCourseContentPrefix}$courseId';
-    await cacheService.remove(cacheKey);
+    await cacheService.remove(cacheKey, accountId: accountId);
   }
 
   /// Dynamic Extraction Logic from Section 6 of README.md:
@@ -883,8 +1067,10 @@ class LmsApiClient {
     required String url,
     required AuthSession session,
   }) async {
-    final cacheKey = 'extracted_${url.hashCode}';
-    final cached = await cacheService.getJson<Map<String, dynamic>>(cacheKey);
+    final cacheKey = 'extracted_$url';
+    final cacheGeneration = cacheService.generation;
+    final cached = await cacheService.getJson<Map<String, dynamic>>(cacheKey,
+      accountId: session.uid,);
     if (cached != null) {
       return LmsExtractedContent.fromJson(cached);
     }
@@ -936,12 +1122,14 @@ class LmsApiClient {
         ],
       );
 
-      await cacheService.putJson(cacheKey, content.toJson());
+      await cacheService.putJson(cacheKey, content.toJson(),
+        accountId: session.uid,
+        expectedGeneration: cacheGeneration,);
       return content;
     }
 
     // 2. Check for Folder View (#folder_tree0)
-    final folderTree = doc.querySelector('#folder_tree0, .filemanager, .box.generalbox');
+    final folderTree = doc.querySelector('#folder_tree0, .filemanager, .box.generalbox',);
     if (folderTree != null) {
       final fileNodes = folderTree.querySelectorAll('.fp-filename a, a.aalink');
       final items = <LmsContentItem>[];
@@ -950,7 +1138,7 @@ class LmsApiClient {
         final href = node.attributes['href'] ?? '';
         final text = node.text.trim();
         if (href.isNotEmpty && text.isNotEmpty) {
-          final iconNode = node.parent?.parent?.querySelector('.fp-icon img, img');
+          final iconNode = node.parent?.parent?.querySelector('.fp-icon img, img',);
           final iconSrc = iconNode?.attributes['src'] ?? '';
 
           String fileType = 'unknown';
@@ -965,8 +1153,7 @@ class LmsApiClient {
           items.add(LmsContentItem(
             name: text,
             downloadUrl: href,
-            fileType: fileType,
-          ));
+            fileType: fileType),);
         }
       }
 
@@ -977,13 +1164,15 @@ class LmsApiClient {
           items: items,
           originalUrl: url,
         );
-        await cacheService.putJson(cacheKey, content.toJson());
+        await cacheService.putJson(cacheKey, content.toJson(),
+          accountId: session.uid,
+          expectedGeneration: cacheGeneration,);
         return content;
       }
     }
 
     // 3. Page content / Markdown or HTML view
-    final pageBody = doc.querySelector('.generalbox, #region-main .content, role=main');
+    final pageBody = doc.querySelector('.generalbox, #region-main .content, role=main',);
     final content = LmsExtractedContent(
       pageTitle: pageTitle,
       type: LmsItemType.pageContent,
@@ -992,7 +1181,9 @@ class LmsApiClient {
       originalUrl: url,
     );
 
-    await cacheService.putJson(cacheKey, content.toJson());
+    await cacheService.putJson(cacheKey, content.toJson(),
+      accountId: session.uid,
+      expectedGeneration: cacheGeneration,);
     return content;
   }
 
@@ -1007,8 +1198,10 @@ class LmsApiClient {
     bool forceRefresh = false,
   }) async {
     final cacheKey = 'assign_detail_$assignId';
+    final cacheGeneration = cacheService.generation;
     if (!forceRefresh) {
-      final cached = await cacheService.getJson(cacheKey);
+      final cached = await cacheService.getJson(cacheKey,
+        accountId: session.uid,);
       if (cached != null) {
         return AssignmentDetail.fromJson(cached);
       }
@@ -1032,7 +1225,7 @@ class LmsApiClient {
     // Title extraction
     var pageTitle = doc
             .querySelector(
-                'h1, h2, .page-header-headings h1, .breadcrumb-item:last-child')
+                'h1, h2, .page-header-headings h1, .breadcrumb-item:last-child',)
             ?.text
             .trim() ??
         '';
@@ -1055,7 +1248,7 @@ class LmsApiClient {
     String? openDate;
     String? dueDate;
     final dateNodes = doc.querySelectorAll(
-        '[data-region="activity-dates"] div, .activity-dates div');
+        '[data-region="activity-dates"] div, .activity-dates div',);
     for (final node in dateNodes) {
       final text = node.text.trim();
       final lower = text.toLowerCase();
@@ -1148,7 +1341,7 @@ class LmsApiClient {
     final extraStatusFields = <String, String>{};
 
     final statusTable =
-        doc.querySelector('.submissionstatustable, .generaltable');
+        doc.querySelector('.submissionstatustable, .generaltable',);
     if (statusTable != null) {
       for (final row in statusTable.querySelectorAll('tr')) {
         final headerCell =
@@ -1170,7 +1363,7 @@ class LmsApiClient {
           lastModified = rawVal;
         } else if (keyLower.contains('file submissions') ||
             keyLower.contains('files')) {
-          final fileLinks = valCell.querySelectorAll('a[href*="pluginfile.php"]');
+          final fileLinks = valCell.querySelectorAll('a[href*="pluginfile.php"]',);
           for (final link in fileLinks) {
             final fileHref = link.attributes['href'] ?? '';
             final fileName = link.text.trim();
@@ -1188,7 +1381,7 @@ class LmsApiClient {
           // Skip rows that are HTML-heavy (e.g. submission comments editor)
           final hasHtmlTags = RegExp(r'<[a-zA-Z]').hasMatch(rawVal);
           final hasEditor = valCell.querySelector(
-                  'textarea, [contenteditable], .editor_atto_content, .atto_content') !=
+                  'textarea, [contenteditable], .editor_atto_content, .atto_content',) !=
               null;
           if (!hasHtmlTags && !hasEditor && rawVal.length <= 400) {
             extraStatusFields[rawHeader] = rawVal;
@@ -1224,7 +1417,7 @@ class LmsApiClient {
 
     // Submission comments count
     int submissionCommentsCount = 0;
-    final commentMatch = RegExp(r'Comments\s*\(\s*(\d+)\s*\)', caseSensitive: false)
+    final commentMatch = RegExp(r'Comments\s*\(\s*(\d+)\s*\)', caseSensitive: false,)
         .firstMatch(html);
     if (commentMatch != null) {
       submissionCommentsCount = int.tryParse(commentMatch.group(1)!) ?? 0;
@@ -1290,7 +1483,9 @@ class LmsApiClient {
       fetchedAt: DateTime.now(),
     );
 
-    await cacheService.putJson(cacheKey, detail.toJson());
+    await cacheService.putJson(cacheKey, detail.toJson(),
+      accountId: session.uid,
+      expectedGeneration: cacheGeneration,);
     return detail;
   }
 
@@ -1315,7 +1510,7 @@ class LmsApiClient {
     );
 
     final html = response.data ?? '';
-    final m = RegExp(r'M\.form_filemanager\.init\(Y,\s*({.*?})\);', dotAll: true)
+    final m = RegExp(r'M\.form_filemanager\.init\(Y,\s*({.*?})\);', dotAll: true,)
         .firstMatch(html);
 
     if (m == null) {
@@ -1549,12 +1744,13 @@ class LmsApiClient {
     );
 
     // Evict cached assignment detail so the next view reflects current submission status
-    await cacheService.remove('assign_detail_${config.assignId}');
+    await cacheService.remove('assign_detail_${config.assignId}',
+      accountId: session.uid,);
 
     final body = response.data ?? '';
     if (body.contains('notifyproblem') || body.contains('errormessage') || body.contains('errorbox')) {
       final doc = html_parser.parse(body);
-      final alert = doc.querySelector('.errormessage, .alert-danger, .notifyproblem, .felement.error')?.text.trim();
+      final alert = doc.querySelector('.errormessage, .alert-danger, .notifyproblem, .felement.error',)?.text.trim();
       if (alert != null && alert.isNotEmpty) {
         throw Exception(alert);
       }
@@ -1569,7 +1765,7 @@ class LmsApiClient {
     required AuthSession session,
     String? userId,
   }) async {
-    logService?.info('ASSIGNMENT', 'Removing submission for assignId=$assignId');
+    logService?.info('ASSIGNMENT', 'Removing submission for assignId=$assignId',);
 
     String? resolvedUserId = (userId != null && userId.isNotEmpty)
         ? userId
@@ -1578,7 +1774,7 @@ class LmsApiClient {
     // If userId is still missing, retrieve it from the confirmation page form
     if (resolvedUserId == null || resolvedUserId.isEmpty) {
       try {
-        logService?.info('ASSIGNMENT', 'Resolving userid from confirmation page for assignId=$assignId');
+        logService?.info('ASSIGNMENT', 'Resolving userid from confirmation page for assignId=$assignId',);
         final confirmResp = await dio.get<String>(
           'https://lms.cuchd.in/mod/assign/view.php?id=$assignId&action=removesubmissionconfirm',
           options: Options(
@@ -1593,9 +1789,9 @@ class LmsApiClient {
         );
         if (confirmResp.data != null) {
           final cHtml = confirmResp.data!;
-          final uidMatch = RegExp(r'name=["'']userid["'']\s+value=["''](\d+)["'']').firstMatch(cHtml) ??
+          final uidMatch = RegExp(r'name=["'']userid["'']\s+value=["''](\d+)["'']',).firstMatch(cHtml) ??
               RegExp(r'"userId":\s*(\d+)').firstMatch(cHtml) ??
-              RegExp(r'data-userid=["''](\d+)["'']').firstMatch(cHtml);
+              RegExp(r'data-userid=["''](\d+)["'']',).firstMatch(cHtml);
           if (uidMatch != null) {
             resolvedUserId = uidMatch.group(1);
           }
@@ -1633,14 +1829,15 @@ class LmsApiClient {
       ),
     );
 
-    await cacheService.remove('assign_detail_$assignId');
+    await cacheService.remove('assign_detail_$assignId',
+      accountId: session.uid,);
 
     final body = response.data ?? '';
     if (body.contains('errormessage') || body.contains('errorbox') || body.contains('notifyproblem')) {
       final doc = html_parser.parse(body);
       final alert = doc.querySelector('.errormessage, .alert-danger, .notifyproblem')?.text.trim();
       if (alert != null && alert.isNotEmpty) {
-        logService?.error('ASSIGNMENT', 'Submission removal failed with error: $alert');
+        logService?.error('ASSIGNMENT', 'Submission removal failed with error: $alert',);
         throw Exception(alert);
       }
     }

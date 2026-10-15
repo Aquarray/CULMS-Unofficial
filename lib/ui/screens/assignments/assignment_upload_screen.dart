@@ -1,7 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
+
 import '../../../data/models/assignment.dart';
 import '../../../providers/assignment_provider.dart';
 import '../browser/app_browser_screen.dart';
@@ -693,7 +693,7 @@ class _AssignmentUploadScreenState
                             title: widget.assignmentTitle ?? 'Edit Submission',
                           );
                         },
-                        icon: const Icon(Icons.open_in_browser_rounded, size: 16),
+                        icon: const Icon(Icons.language_rounded, size: 16),
                         label: const Text(
                           'Open in Moodle Browser',
                           style: TextStyle(fontSize: 12),

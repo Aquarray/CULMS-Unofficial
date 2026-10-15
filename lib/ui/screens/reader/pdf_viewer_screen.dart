@@ -39,7 +39,8 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
     _pdfController = PdfViewerController();
     _downloadedFile = widget.localFile;
 
-    if (_downloadedFile == null && widget.url != null) {
+    if (_downloadedFile == null &&
+        ( widget.url != null || widget.downloadUrl != null)) {
       _downloadAndCachePdf();
     }
   }
@@ -54,11 +55,16 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
 
     try {
       final cacheService = ref.read(cacheServiceProvider);
+      final generation = cacheService.generation;
+      final auth = ref.read(authProvider);
       final filename = '${widget.title.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}.pdf';
 
       // Check if already in cache
-      final existing = await cacheService.getCachedFile(filename);
+      final existing = await cacheService.getCachedFile(filename,
+        sourceUrl: targetUrl,
+        accountId: auth.session?.uid,);
       if (existing != null) {
+        if (!mounted) return;
         setState(() {
           _downloadedFile = existing;
           _isDownloading = false;
@@ -67,7 +73,6 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
       }
 
       // Download with Moodle Session
-      final auth = ref.read(authProvider);
       final dio = ref.read(dioProvider);
 
       final resp = await dio.get<List<int>>(
@@ -82,19 +87,24 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
       );
 
       if (resp.data != null) {
-        final saved = await cacheService.saveFile(filename, resp.data!);
+        final saved = await cacheService.saveFile(filename, resp.data!,
+          sourceUrl: targetUrl,
+          accountId: auth.session?.uid,
+          expectedGeneration: generation,);
+        if (!mounted) return;
         setState(() {
           _downloadedFile = saved;
           _isDownloading = false;
         });
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isDownloading = false;
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load PDF: $e')),
+          SnackBar(content: Text('Failed to load PDF: $e'))
         );
       }
     }
@@ -167,7 +177,7 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
                               0, 0, -1, 0, 255, // blue
                               0, 0, 0, 1, 0, // alpha
                             ])
-                          : const ColorFilter.mode(Colors.transparent, BlendMode.dst),
+                          : const ColorFilter.mode(Colors.transparent, BlendMode.dst,),
                       child: PdfViewer.file(
                         _downloadedFile!.path,
                         controller: _pdfController,
@@ -193,7 +203,7 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
                       right: 0,
                       child: Center(
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8,),
                           decoration: BoxDecoration(
                             color: Colors.black87,
                             borderRadius: BorderRadius.circular(30),
@@ -209,13 +219,13 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
-                                icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white, size: 16),
+                                icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white, size: 16,),
                                 onPressed: _pageNumber > 1
-                                    ? () => _pdfController.goToPage(pageNumber: _pageNumber - 1)
+                                    ? () => _pdfController.goToPage(pageNumber: _pageNumber - 1,)
                                     : null,
                               ),
                               Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                padding: const EdgeInsets.symmetric(horizontal: 8.0,),
                                 child: Text(
                                   '$_pageNumber / ${_pageCount > 0 ? _pageCount : "-"}',
                                   style: const TextStyle(
@@ -226,20 +236,20 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
                                 ),
                               ),
                               IconButton(
-                                icon: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 16),
+                                icon: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 16,),
                                 onPressed: _pageNumber < _pageCount
-                                    ? () => _pdfController.goToPage(pageNumber: _pageNumber + 1)
+                                    ? () => _pdfController.goToPage(pageNumber: _pageNumber + 1,)
                                     : null,
                               ),
                               const SizedBox(width: 8),
                               IconButton(
-                                icon: const Icon(Icons.zoom_in_rounded, color: Colors.white, size: 20),
+                                icon: const Icon(Icons.zoom_in_rounded, color: Colors.white, size: 20,),
                                 onPressed: () {
                                   _pdfController.zoomUp();
                                 },
                               ),
                               IconButton(
-                                icon: const Icon(Icons.zoom_out_rounded, color: Colors.white, size: 20),
+                                icon: const Icon(Icons.zoom_out_rounded, color: Colors.white, size: 20,),
                                 onPressed: () {
                                   _pdfController.zoomDown();
                                 },
@@ -255,7 +265,7 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.picture_as_pdf_outlined, size: 48, color: Colors.grey),
+                      const Icon(Icons.picture_as_pdf_outlined, size: 48, color: Colors.grey,),
                       const SizedBox(height: 12),
                       const Text('Failed to load PDF preview'),
                       const SizedBox(height: 12),
