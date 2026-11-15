@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/settings_provider.dart';
 import 'courses/courses_screen.dart';
 import 'dashboard/dashboard_screen.dart';
 import 'settings/settings_screen.dart';
 
-class HomeShell extends StatefulWidget {
+class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
   @override
-  State<HomeShell> createState() => _HomeShellState();
+  ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends ConsumerState<HomeShell> {
   int _currentIndex = 1; // Center: Dashboard is the default prominent landing tab
   late final PageController _pageController;
 
@@ -37,11 +39,21 @@ class _HomeShellState extends State<HomeShell> {
     setState(() {
       _currentIndex = index;
     });
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
-    );
+
+    final disableAnimations = ref.read(settingsProvider).disableAnimations ||
+        (MediaQuery.maybeDisableAnimationsOf(context) ?? false);
+
+    if (_pageController.hasClients) {
+      if (disableAnimations) {
+        _pageController.jumpToPage(index);
+      } else {
+        _pageController.animateToPage(
+          index,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    }
   }
 
   void _onPageChanged(int index) {
@@ -52,10 +64,16 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    final disableAnimations = ref.watch(settingsProvider).disableAnimations ||
+        (MediaQuery.maybeDisableAnimationsOf(context) ?? false);
+
     return Scaffold(
       body: PageView(
         controller: _pageController,
         onPageChanged: _onPageChanged,
+        physics: disableAnimations
+            ? const NeverScrollableScrollPhysics()
+            : const PageScrollPhysics(),
         children: _screens,
       ),
       bottomNavigationBar: NavigationBar(

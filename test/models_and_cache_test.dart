@@ -28,6 +28,19 @@ void main() {
       expect(restored.alarm1HourBefore, true);
       expect(restored.alarmAtExactTime, true);
       expect(restored.enableLearnWithAi, true);
+      expect(restored.disableAnimations, false);
+    });
+
+    test('AppSettings disableAnimations toggles and serializes', () {
+      const settings = AppSettings(disableAnimations: true);
+      expect(settings.disableAnimations, true);
+
+      final jsonStr = settings.toJson();
+      final restored = AppSettings.fromJson(jsonStr);
+      expect(restored.disableAnimations, true);
+
+      final toggled = restored.copyWith(disableAnimations: false);
+      expect(toggled.disableAnimations, false);
     });
 
     test('CopyWith updates individual fields', () {

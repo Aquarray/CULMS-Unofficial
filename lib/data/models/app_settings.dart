@@ -160,6 +160,7 @@ class AppSettings {
   final QuizAiProvider quizAiProvider;
   final String quizAiApiKey;
   final String quizAiModel;
+  final bool disableAnimations;
 
   const AppSettings({
     this.themeMode = AppThemeMode.system,
@@ -190,6 +191,7 @@ class AppSettings {
     this.quizAiProvider = QuizAiProvider.gemini,
     this.quizAiApiKey = '',
     this.quizAiModel = '',
+    this.disableAnimations = false,
   });
 
   AppSettings copyWith({
@@ -221,6 +223,7 @@ class AppSettings {
     QuizAiProvider? quizAiProvider,
     String? quizAiApiKey,
     String? quizAiModel,
+    bool? disableAnimations,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -251,6 +254,7 @@ class AppSettings {
       quizAiProvider: quizAiProvider ?? this.quizAiProvider,
       quizAiApiKey: quizAiApiKey ?? this.quizAiApiKey,
       quizAiModel: quizAiModel ?? this.quizAiModel,
+      disableAnimations: disableAnimations ?? this.disableAnimations,
     );
   }
 
@@ -284,6 +288,7 @@ class AppSettings {
       'quizAiProvider': quizAiProvider.name,
       'quizAiApiKey': quizAiApiKey,
       'quizAiModel': quizAiModel,
+      'disableAnimations': disableAnimations,
     };
   }
 
@@ -335,6 +340,7 @@ class AppSettings {
       ),
       quizAiApiKey: map['quizAiApiKey'] as String? ?? '',
       quizAiModel: map['quizAiModel'] as String? ?? '',
+      disableAnimations: map['disableAnimations'] as bool? ?? false,
     );
   }
 

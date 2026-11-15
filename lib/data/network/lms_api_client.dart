@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:html/parser.dart' as html_parser;
@@ -664,7 +665,7 @@ class LmsApiClient {
       final cachedJson = await cacheService.getJson<String>(cacheKey,
         accountId: session.uid,);
       if (cachedJson != null) {
-        final courses = Course.fromJsonList(cachedJson);
+        final courses = await Isolate.run(() => Course.fromJsonList(cachedJson));
         if (courses.isNotEmpty) {
           return courses;
         }
@@ -722,7 +723,7 @@ class LmsApiClient {
       accountId: session.uid,
       expectedGeneration: cacheGeneration,);
 
-    return Course.fromJsonList(rawString);
+    return Isolate.run(() => Course.fromJsonList(rawString));
   }
 
   /// 5.2 Fetching Notifications / Calendar Events (with dynamic timestamps and caching)
@@ -737,7 +738,7 @@ class LmsApiClient {
       final cachedJson = await cacheService.getJson<String>(cacheKey,
         accountId: session.uid,);
       if (cachedJson != null) {
-        final events = LmsCalendarEvent.fromJsonList(cachedJson);
+        final events = await Isolate.run(() => LmsCalendarEvent.fromJsonList(cachedJson));
         if (events.isNotEmpty) {
           return events;
         }
@@ -788,10 +789,10 @@ class LmsApiClient {
       accountId: session.uid,
       expectedGeneration: cacheGeneration,);
 
-    return LmsCalendarEvent.fromJsonList(rawString);
+    return Isolate.run(() => LmsCalendarEvent.fromJsonList(rawString));
   }
 
-  List<CourseUnit>? _parseCourseFormatState(
+  static List<CourseUnit>? _parseCourseFormatState(
     Map<String, dynamic> state,
     int courseId,
   ) {
@@ -923,7 +924,9 @@ class LmsApiClient {
       final cached = await cacheService.getJson<List<dynamic>>(cacheKey,
         accountId: session.uid,);
       if (cached != null && cached.isNotEmpty) {
-        return cached.map((e) => CourseUnit.fromJson(e as Map<String, dynamic>)).toList();
+        return await Isolate.run(() =>
+          cached.map((e) => CourseUnit.fromJson(e as Map<String, dynamic>)).toList(),
+        );
       }
     }
 
@@ -955,8 +958,11 @@ class LmsApiClient {
         final List<dynamic> list = raw is String ? json.decode(raw) as List : raw as List;
 
         if (list.isNotEmpty && list[0]['error'] == false && list[0]['data'] != null) {
-          final state = json.decode(list[0]['data'] as String) as Map<String, dynamic>;
-          return _parseCourseFormatState(state, courseId);
+          final dataStr = list[0]['data'] as String;
+          return await Isolate.run(() {
+            final state = json.decode(dataStr) as Map<String, dynamic>;
+            return _parseCourseFormatState(state, courseId);
+          });
         }
       } catch (e) {
         logService?.warning('COURSES', 'fetchStateWithSesskey error: $e');
@@ -1001,7 +1007,22 @@ class LmsApiClient {
       }
     }
 
-    // 3. Fallback: Parse HTML of course page directly
+    // 3. Fallback: Parse HTML of course page directly in background isolate
+    final units = await Isolate.run(() => _parseCourseUnitsFromHtml(html, courseId, url));
+
+    if (units.isNotEmpty) {
+      await cacheService.putJson(cacheKey, units.map((u) => u.toJson()).toList(),
+        accountId: session.uid,
+        expectedGeneration: cacheGeneration,);
+    }
+    return units;
+  }
+
+  static List<CourseUnit> _parseCourseUnitsFromHtml(
+    String html,
+    int courseId,
+    String courseUrl,
+  ) {
     final doc = html_parser.parse(html);
     final units = <CourseUnit>[];
 
@@ -1108,7 +1129,7 @@ class LmsApiClient {
               id: 'sec_$i',
               title: title.isEmpty ? 'General Information' : title,
               summary: summary,
-              sectionUrl: '$url&section=$i#tabs-tree-start',
+              sectionUrl: '$courseUrl&section=$i#tabs-tree-start',
               sectionNumber: i,
               category: CourseUnit.resolveCategory(title, i),
               parentUnit: CourseUnit.resolveParentUnit(title, i),
@@ -1117,13 +1138,6 @@ class LmsApiClient {
           }
         }
       }
-    }
-
-    if (units.isNotEmpty) {
-      await cacheService.putJson(cacheKey, units.map((u) => u.toJson()).toList(),
-        accountId: session.uid,
-        expectedGeneration: cacheGeneration,);
-      return units;
     }
 
     // Fallback: If section parser returned empty, extract all activity items across the page
@@ -1162,10 +1176,6 @@ class LmsApiClient {
       ),);
     }
 
-    // Cache parsed units
-    await cacheService.putJson(cacheKey, units.map((u) => u.toJson()).toList(),
-      accountId: session.uid,
-      expectedGeneration: cacheGeneration,);
     return units;
   }
 
@@ -1221,7 +1231,7 @@ class LmsApiClient {
     } else {
       final html = utf8.decode(bytes, allowMalformed: true);
       _checkSessionExpiry(html);
-      content = LmsContentParser.parseHtml(html, url: resolvedUrl);
+      content = await Isolate.run(() => LmsContentParser.parseHtml(html, url: resolvedUrl));
     }
     await cacheService.putJson(cacheKey, content.toJson(),
       accountId: session.uid, expectedGeneration: cacheGeneration);

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 enum SlideDirection {
@@ -39,6 +40,7 @@ class _SlideScrollItemState extends State<SlideScrollItem>
   late final Animation<Offset> _slideAnimation;
   late final Animation<double> _fadeAnimation;
   late final Animation<double> _scaleAnimation;
+  Timer? _delayTimer;
 
   @override
   void initState() {
@@ -91,7 +93,7 @@ class _SlideScrollItemState extends State<SlideScrollItem>
     // For items scrolled in later, animate immediately without delay.
     final delayMs = widget.index <= 5 ? (widget.index * 30) : 0;
     if (delayMs > 0) {
-      Future.delayed(Duration(milliseconds: delayMs), () {
+      _delayTimer = Timer(Duration(milliseconds: delayMs), () {
         if (mounted) {
           _controller.forward();
         }
@@ -103,12 +105,16 @@ class _SlideScrollItemState extends State<SlideScrollItem>
 
   @override
   void dispose() {
+    _delayTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      return widget.child;
+    }
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(

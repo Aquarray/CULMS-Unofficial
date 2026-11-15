@@ -96,7 +96,9 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => const Center(
-        child: CircularProgressIndicator()
+        child: RepaintBoundary(
+          child: CircularProgressIndicator(),
+        ),
       ),
     );
 
@@ -290,6 +292,54 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
     final coursesState = ref.watch(coursesProvider);
     final companionCourse = coursesState.getCompanionCourse(widget.course);
     final settings = ref.watch(settingsProvider);
+    final disableAnimations = settings.disableAnimations ||
+        (MediaQuery.maybeDisableAnimationsOf(context) ?? false);
+
+    Widget badgeWidget = Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4,),
+        decoration: BoxDecoration(
+          color: widget.course.isContentCourse
+              ? const Color(0xFF3B82F6).withValues(alpha: 0.15)
+              : const Color(0xFFF59E0B).withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          widget.course.isContentCourse ? '📘 Study Material' : '📝 Tests & MSTs',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: widget.course.isContentCourse
+                ? const Color(0xFF3B82F6)
+                : const Color(0xFFD97706),
+          ),
+        ),
+      ),
+    );
+
+    Widget titleWidget = Material(
+      color: Colors.transparent,
+      child: Text(
+        widget.course.cleanTitle,
+        style: const TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          height: 1.3,
+        ),
+      ),
+    );
+
+    if (!disableAnimations) {
+      badgeWidget = Hero(
+        tag: 'course_badge_${widget.course.id}',
+        child: badgeWidget,
+      );
+      titleWidget = Hero(
+        tag: 'course_title_${widget.course.id}',
+        child: titleWidget,
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -346,48 +396,11 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            Hero(
-                              tag: 'course_badge_${widget.course.id}',
-                              child: Material(
-                                color: Colors.transparent,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4,),
-                                  decoration: BoxDecoration(
-                                    color: widget.course.isContentCourse
-                                        ? const Color(0xFF3B82F6).withValues(alpha: 0.15)
-                                        : const Color(0xFFF59E0B).withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    widget.course.isContentCourse ? '📘 Study Material' : '📝 Tests & MSTs',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: widget.course.isContentCourse
-                                          ? const Color(0xFF3B82F6)
-                                          : const Color(0xFFD97706),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
+                            badgeWidget,
                           ],
                         ),
                         const SizedBox(height: 10),
-                        Hero(
-                          tag: 'course_title_${widget.course.id}',
-                          child: Material(
-                            color: Colors.transparent,
-                            child: Text(
-                              widget.course.cleanTitle,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                height: 1.3,
-                              ),
-                            ),
-                          ),
-                        ),
+                        titleWidget,
                         const SizedBox(height: 14),
                         Row(
                           children: [
@@ -476,7 +489,11 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
             // Course Materials Sections
             unitsAsync.when(
               loading: () => const SliverFillRemaining(
-                child: Center(child: CircularProgressIndicator()),
+                child: Center(
+                  child: RepaintBoundary(
+                    child: CircularProgressIndicator(),
+                  ),
+                ),
               ),
               error: (err, _) => SliverFillRemaining(
                 child: Center(
@@ -730,11 +747,12 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
                               final groupKey = groupedUnits.keys.elementAt(groupIdx,);
                               final groupSections = groupedUnits[groupKey]!;
 
-                              return SlideScrollItem(
-                                key: ValueKey('unit_group_${widget.course.id}_$groupKey',),
-                                index: groupIdx,
-                                direction: SlideDirection.up,
-                                child: Column(
+                              return RepaintBoundary(
+                                child: SlideScrollItem(
+                                  key: ValueKey('unit_group_${widget.course.id}_$groupKey',),
+                                  index: groupIdx,
+                                  direction: SlideDirection.up,
+                                  child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                   // Unit Group Header Divider
@@ -899,7 +917,8 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
                                   }),
                                 ],
                               ),
-                            );
+                            ),
+                          );
                           },
                             childCount: groupedUnits.length
                           ),

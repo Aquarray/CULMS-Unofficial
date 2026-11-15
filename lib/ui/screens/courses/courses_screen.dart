@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/course.dart';
 import '../../../providers/course_provider.dart';
+import '../../../providers/settings_provider.dart';
 import '../../common/slide_scroll_item.dart';
 import 'course_detail_screen.dart';
 
@@ -11,6 +12,9 @@ class CoursesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final coursesState = ref.watch(coursesProvider);
+    final settings = ref.watch(settingsProvider);
+    final disableAnimations = settings.disableAnimations ||
+        (MediaQuery.maybeDisableAnimationsOf(context) ?? false);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -90,11 +94,18 @@ class CoursesScreen extends ConsumerWidget {
           // Course List
           Expanded(
             child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 280),
+              duration: disableAnimations
+                  ? Duration.zero
+                  : const Duration(milliseconds: 280),
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
               child: coursesState.isLoading && coursesState.allCourses.isEmpty
-                  ? const Center(key: ValueKey('loading'), child: CircularProgressIndicator())
+                  ? const Center(
+                      key: ValueKey('loading'),
+                      child: RepaintBoundary(
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
                   : RefreshIndicator(
                       key: ValueKey('list_${coursesState.filter}_${coursesState.searchQuery.isNotEmpty}'),
                       onRefresh: () =>
@@ -115,11 +126,13 @@ class CoursesScreen extends ConsumerWidget {
                               itemCount: coursesState.filteredCourses.length,
                               itemBuilder: (context, index) {
                                 final course = coursesState.filteredCourses[index];
-                                return SlideScrollItem(
-                                  key: ValueKey('course_${course.id}'),
-                                  index: index,
-                                  direction: SlideDirection.up,
-                                  child: _CourseCard(course: course),
+                                return RepaintBoundary(
+                                  child: SlideScrollItem(
+                                    key: ValueKey('course_${course.id}'),
+                                    index: index,
+                                    direction: SlideDirection.up,
+                                    child: _CourseCard(course: course),
+                                  ),
                                 );
                               },
                             ),
@@ -185,10 +198,56 @@ class _CourseCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final disableAnimations = ref.watch(settingsProvider).disableAnimations ||
+        (MediaQuery.maybeDisableAnimationsOf(context) ?? false);
 
     final isContent = course.isContentCourse;
     final badgeColor = isContent ? const Color(0xFF3B82F6) : const Color(0xFFF59E0B);
     final badgeLabel = isContent ? '📘 Study Material' : '📝 Tests & Quizzes';
+
+    Widget badgeWidget = Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: badgeColor.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          badgeLabel,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: badgeColor,
+          ),
+        ),
+      ),
+    );
+
+    Widget titleWidget = Material(
+      color: Colors.transparent,
+      child: Text(
+        course.cleanTitle,
+        style: const TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+          height: 1.3,
+        ),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+
+    if (!disableAnimations) {
+      badgeWidget = Hero(
+        tag: 'course_badge_${course.id}',
+        child: badgeWidget,
+      );
+      titleWidget = Hero(
+        tag: 'course_title_${course.id}',
+        child: titleWidget,
+      );
+    }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -210,27 +269,7 @@ class _CourseCard extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Hero(
-                    tag: 'course_badge_${course.id}',
-                    child: Material(
-                      color: Colors.transparent,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: badgeColor.withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          badgeLabel,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: badgeColor,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  badgeWidget,
                   if (course.coursecategory.isNotEmpty)
                     Flexible(
                       child: Text(
@@ -243,22 +282,7 @@ class _CourseCard extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              Hero(
-                tag: 'course_title_${course.id}',
-                child: Material(
-                  color: Colors.transparent,
-                  child: Text(
-                    course.cleanTitle,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      height: 1.3,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
+              titleWidget,
               const SizedBox(height: 14),
               Row(
                 children: [

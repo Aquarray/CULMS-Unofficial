@@ -76,12 +76,23 @@ class _CuimsAppState extends ConsumerState<CuimsApp> {
       theme: AppTheme.lightTheme(
         settings.fontFamily,
         seedColor: settings.accentColor.resolve(false),
+        disableAnimations: settings.disableAnimations,
       ),
       darkTheme: AppTheme.darkTheme(
         settings.fontFamily,
         seedColor: settings.accentColor.resolve(true),
         isAmoled: isAmoled,
+        disableAnimations: settings.disableAnimations,
       ),
+      builder: (context, child) {
+        if (settings.disableAnimations) {
+          return MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child ?? const SizedBox.shrink(),
+          );
+        }
+        return child ?? const SizedBox.shrink();
+      },
       home: authState.isAuthenticated ? const HomeShell() : const LoginScreen(),
     );
   }

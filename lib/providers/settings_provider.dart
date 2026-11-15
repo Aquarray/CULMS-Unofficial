@@ -140,6 +140,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void updateQuizAiModel(String model) {
     _saveSettings(state.copyWith(quizAiModel: model));
   }
+
+  void updateDisableAnimations(bool disable) {
+    _saveSettings(state.copyWith(disableAnimations: disable));
+  }
 }
 
 final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(SettingsNotifier.new);

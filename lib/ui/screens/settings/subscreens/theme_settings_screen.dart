@@ -136,6 +136,40 @@ class ThemeSettingsScreen extends ConsumerWidget {
               ),
             ),
           ),
+          const SizedBox(height: 14),
+
+          // Performance / Animations
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: SwitchListTile(
+              secondary: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF06B6D4).withValues(alpha: isDark ? 0.2 : 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.speed_rounded, color: Color(0xFF06B6D4), size: 20),
+              ),
+              title: const Text(
+                'Disable Animations',
+                style: TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              subtitle: Text(
+                'Turn off page transitions and visual effects for faster performance',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.white60 : Colors.black54,
+                ),
+              ),
+              value: settings.disableAnimations,
+              onChanged: (val) {
+                settingsNotifier.updateDisableAnimations(val);
+              },
+            ),
+          ),
         ],
       ),
     );

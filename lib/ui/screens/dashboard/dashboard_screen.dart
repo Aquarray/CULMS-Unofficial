@@ -5,6 +5,7 @@ import '../../../data/models/calendar_event.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/course_provider.dart';
 import '../../../providers/dashboard_provider.dart';
+import '../../../providers/settings_provider.dart';
 import '../../common/notification_permission_banner.dart';
 import '../../common/slide_scroll_item.dart';
 import '../assignments/assignment_detail_screen.dart';
@@ -61,6 +62,9 @@ class DashboardScreen extends ConsumerWidget {
     final dashboardData = ref.watch(dashboardProvider);
     final stats = ref.watch(dashboardStatsProvider);
     final coursesState = ref.watch(coursesProvider);
+    final settings = ref.watch(settingsProvider);
+    final disableAnimations = settings.disableAnimations ||
+        (MediaQuery.maybeDisableAnimationsOf(context) ?? false);
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -182,76 +186,78 @@ class DashboardScreen extends ConsumerWidget {
                   separatorBuilder: (_, _) => const SizedBox(width: 12),
                   itemBuilder: (context, idx) {
                     final course = coursesState.allCourses[idx];
-                    return SlideScrollItem(
-                      key: ValueKey('dash_course_${course.id}'),
-                      index: idx,
-                      direction: SlideDirection.left,
-                      child: SizedBox(
-                        width: 240,
-                        child: Card(
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(10),
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => CourseDetailScreen(course: course),
-                                ),
-                              );
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.all(14.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        course.courseCode,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: theme.primaryColor,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        course.cleanTitle,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          height: 1.25,
-                                        ),
-                                      ),
-                                    ],
+                    return RepaintBoundary(
+                      child: SlideScrollItem(
+                        key: ValueKey('dash_course_${course.id}'),
+                        index: idx,
+                        direction: SlideDirection.left,
+                        child: SizedBox(
+                          width: 240,
+                          child: Card(
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => CourseDetailScreen(course: course),
                                   ),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(4),
-                                          child: LinearProgressIndicator(
-                                            value: course.progress / 100,
-                                            minHeight: 4,
-                                            backgroundColor: isDark ? Colors.white12 : Colors.black12,
-                                            valueColor: AlwaysStoppedAnimation<Color>(
-                                              course.progress >= 100 ? Colors.green : theme.primaryColor,
+                                );
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.all(14.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          course.courseCode,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: theme.primaryColor,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          course.cleanTitle,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            height: 1.25,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(4),
+                                            child: LinearProgressIndicator(
+                                              value: course.progress / 100,
+                                              minHeight: 4,
+                                              backgroundColor: isDark ? Colors.white12 : Colors.black12,
+                                              valueColor: AlwaysStoppedAnimation<Color>(
+                                                course.progress >= 100 ? Colors.green : theme.primaryColor,
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        '${course.progress}%',
-                                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          '${course.progress}%',
+                                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -283,7 +289,9 @@ class DashboardScreen extends ConsumerWidget {
             ),
 
             AnimatedSwitcher(
-              duration: const Duration(milliseconds: 260),
+              duration: disableAnimations
+                  ? Duration.zero
+                  : const Duration(milliseconds: 260),
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
               child: dashboardData.isLoading && dashboardData.events.isEmpty
@@ -291,7 +299,9 @@ class DashboardScreen extends ConsumerWidget {
                       key: ValueKey('timeline_loading'),
                       child: Padding(
                         padding: EdgeInsets.all(32.0),
-                        child: CircularProgressIndicator(),
+                        child: RepaintBoundary(
+                          child: CircularProgressIndicator(),
+                        ),
                       ),
                     )
                   : dashboardData.events.isEmpty
@@ -315,18 +325,20 @@ class DashboardScreen extends ConsumerWidget {
                             children: [
                               for (int idx = 0; idx < dashboardData.events.length; idx++) ...[
                                 if (idx > 0) const SizedBox(height: 10),
-                                SlideScrollItem(
-                                  key: ValueKey('dash_event_${dashboardData.events[idx].id}_${dashboardData.events[idx].timesort}'),
-                                  index: idx,
-                                  direction: SlideDirection.up,
-                                  child: _EventCard(
-                                    event: dashboardData.events[idx],
-                                    onActionTap: dashboardData.events[idx].actionUrl != null
-                                        ? () => _handleEventTap(context, dashboardData.events[idx])
-                                        : null,
-                                    onCardTap: dashboardData.events[idx].actionUrl != null
-                                        ? () => _handleEventTap(context, dashboardData.events[idx])
-                                        : null,
+                                RepaintBoundary(
+                                  child: SlideScrollItem(
+                                    key: ValueKey('dash_event_${dashboardData.events[idx].id}_${dashboardData.events[idx].timesort}'),
+                                    index: idx,
+                                    direction: SlideDirection.up,
+                                    child: _EventCard(
+                                      event: dashboardData.events[idx],
+                                      onActionTap: dashboardData.events[idx].actionUrl != null
+                                          ? () => _handleEventTap(context, dashboardData.events[idx])
+                                          : null,
+                                      onCardTap: dashboardData.events[idx].actionUrl != null
+                                          ? () => _handleEventTap(context, dashboardData.events[idx])
+                                          : null,
+                                    ),
                                   ),
                                 ),
                               ],

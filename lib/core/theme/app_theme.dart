@@ -163,6 +163,7 @@ class AppTheme {
     required AppFontFamily fontFamily,
     Color seedColor = defaultSeedColor,
     bool isAmoled = false,
+    bool disableAnimations = false,
   }) {
     final isDark = brightness == Brightness.dark;
 
@@ -440,12 +441,67 @@ class AppTheme {
         thickness: 1,
         space: 1,
       ),
+
+      // Page Transitions Theme: Instant transitions when disableAnimations is enabled
+      pageTransitionsTheme: PageTransitionsTheme(
+        builders: disableAnimations
+            ? const {
+                TargetPlatform.android: NoAnimationPageTransitionsBuilder(),
+                TargetPlatform.iOS: NoAnimationPageTransitionsBuilder(),
+                TargetPlatform.linux: NoAnimationPageTransitionsBuilder(),
+                TargetPlatform.macOS: NoAnimationPageTransitionsBuilder(),
+                TargetPlatform.windows: NoAnimationPageTransitionsBuilder(),
+              }
+            : const {
+                TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+                TargetPlatform.iOS: FadeUpwardsPageTransitionsBuilder(),
+                TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
+                TargetPlatform.macOS: FadeUpwardsPageTransitionsBuilder(),
+                TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+              },
+      ),
     );
   }
 
-  static ThemeData lightTheme(AppFontFamily fontFamily, {Color seedColor = defaultSeedColor}) =>
-      buildTheme(brightness: Brightness.light, fontFamily: fontFamily, seedColor: seedColor);
+  static ThemeData lightTheme(
+    AppFontFamily fontFamily, {
+    Color seedColor = defaultSeedColor,
+    bool disableAnimations = false,
+  }) =>
+      buildTheme(
+        brightness: Brightness.light,
+        fontFamily: fontFamily,
+        seedColor: seedColor,
+        disableAnimations: disableAnimations,
+      );
 
-  static ThemeData darkTheme(AppFontFamily fontFamily, {Color seedColor = defaultSeedColor, bool isAmoled = false}) =>
-      buildTheme(brightness: Brightness.dark, fontFamily: fontFamily, seedColor: seedColor, isAmoled: isAmoled);
+  static ThemeData darkTheme(
+    AppFontFamily fontFamily, {
+    Color seedColor = defaultSeedColor,
+    bool isAmoled = false,
+    bool disableAnimations = false,
+  }) =>
+      buildTheme(
+        brightness: Brightness.dark,
+        fontFamily: fontFamily,
+        seedColor: seedColor,
+        isAmoled: isAmoled,
+        disableAnimations: disableAnimations,
+      );
+}
+
+/// Instant PageTransitionsBuilder that eliminates route transition durations completely
+class NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
+  const NoAnimationPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return child;
+  }
 }
