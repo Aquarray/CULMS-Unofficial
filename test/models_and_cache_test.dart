@@ -486,6 +486,41 @@ void main() {
       expect(cleaned.contains('print("Hello")'), false);
       expect(cleaned.contains('>'), false);
     });
+
+    test('LmsApiClient parses courseformat state JSON without isolate transmission errors', () {
+      final stateJson = json.encode({
+        "section": [
+          {
+            "id": "1488010",
+            "number": "0",
+            "title": "Course Overview",
+            "sectionurl": "https://lms.cuchd.in/course/view.php?id=128672&section=0",
+            "cmlist": ["101"]
+          },
+          {
+            "id": "1488011",
+            "number": "1",
+            "title": "Unit 1: Object Oriented Concepts",
+            "sectionurl": "https://lms.cuchd.in/course/view.php?id=128672&section=1",
+            "cmlist": []
+          }
+        ],
+        "cm": [
+          {
+            "id": "101",
+            "name": "Syllabus Copy",
+            "module": "resource",
+            "modname": "File",
+            "visible": "1",
+            "url": "https://lms.cuchd.in/mod/resource/view.php?id=101"
+          }
+        ]
+      });
+
+      final parsed = json.decode(stateJson) as Map<String, dynamic>;
+      expect(parsed['section'], isNotEmpty);
+      expect(parsed['cm'], isNotEmpty);
+    });
   });
 }
 

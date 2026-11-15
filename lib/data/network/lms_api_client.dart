@@ -652,6 +652,41 @@ class LmsApiClient {
     return (name: studentName, userId: resolvedUserId);
   }
 
+  // --- Static Isolate Workers (guaranteed never to capture instance context or unsendable fields) ---
+
+  static Future<List<Course>> _parseCoursesInIsolate(String rawString) {
+    return Isolate.run(() => Course.fromJsonList(rawString));
+  }
+
+  static Future<List<LmsCalendarEvent>> _parseCalendarEventsInIsolate(String rawString) {
+    return Isolate.run(() => LmsCalendarEvent.fromJsonList(rawString));
+  }
+
+  static Future<List<CourseUnit>?> _parseCourseFormatStateInIsolate(
+    String dataStr,
+    int courseId,
+  ) {
+    return Isolate.run(() {
+      final state = json.decode(dataStr) as Map<String, dynamic>;
+      return _parseCourseFormatState(state, courseId);
+    });
+  }
+
+  static Future<List<CourseUnit>> _parseCourseUnitsFromHtmlInIsolate(
+    String html,
+    int courseId,
+    String courseUrl,
+  ) {
+    return Isolate.run(() => _parseCourseUnitsFromHtml(html, courseId, courseUrl));
+  }
+
+  static Future<LmsExtractedContent> _parseHtmlContentInIsolate(
+    String html,
+    String resolvedUrl,
+  ) {
+    return Isolate.run(() => LmsContentParser.parseHtml(html, url: resolvedUrl));
+  }
+
   /// 5.1 Fetching Enrolled Courses (with caching to limit requests)
   Future<List<Course>> getEnrolledCourses(
     AuthSession session, {
@@ -665,7 +700,7 @@ class LmsApiClient {
       final cachedJson = await cacheService.getJson<String>(cacheKey,
         accountId: session.uid,);
       if (cachedJson != null) {
-        final courses = await Isolate.run(() => Course.fromJsonList(cachedJson));
+        final courses = await _parseCoursesInIsolate(cachedJson);
         if (courses.isNotEmpty) {
           return courses;
         }
@@ -723,7 +758,7 @@ class LmsApiClient {
       accountId: session.uid,
       expectedGeneration: cacheGeneration,);
 
-    return Isolate.run(() => Course.fromJsonList(rawString));
+    return _parseCoursesInIsolate(rawString);
   }
 
   /// 5.2 Fetching Notifications / Calendar Events (with dynamic timestamps and caching)
@@ -738,7 +773,7 @@ class LmsApiClient {
       final cachedJson = await cacheService.getJson<String>(cacheKey,
         accountId: session.uid,);
       if (cachedJson != null) {
-        final events = await Isolate.run(() => LmsCalendarEvent.fromJsonList(cachedJson));
+        final events = await _parseCalendarEventsInIsolate(cachedJson);
         if (events.isNotEmpty) {
           return events;
         }
@@ -789,7 +824,7 @@ class LmsApiClient {
       accountId: session.uid,
       expectedGeneration: cacheGeneration,);
 
-    return Isolate.run(() => LmsCalendarEvent.fromJsonList(rawString));
+    return _parseCalendarEventsInIsolate(rawString);
   }
 
   static List<CourseUnit>? _parseCourseFormatState(
@@ -924,9 +959,7 @@ class LmsApiClient {
       final cached = await cacheService.getJson<List<dynamic>>(cacheKey,
         accountId: session.uid,);
       if (cached != null && cached.isNotEmpty) {
-        return await Isolate.run(() =>
-          cached.map((e) => CourseUnit.fromJson(e as Map<String, dynamic>)).toList(),
-        );
+        return cached.map((e) => CourseUnit.fromJson(e as Map<String, dynamic>)).toList();
       }
     }
 
@@ -959,10 +992,7 @@ class LmsApiClient {
 
         if (list.isNotEmpty && list[0]['error'] == false && list[0]['data'] != null) {
           final dataStr = list[0]['data'] as String;
-          return await Isolate.run(() {
-            final state = json.decode(dataStr) as Map<String, dynamic>;
-            return _parseCourseFormatState(state, courseId);
-          });
+          return await _parseCourseFormatStateInIsolate(dataStr, courseId);
         }
       } catch (e) {
         logService?.warning('COURSES', 'fetchStateWithSesskey error: $e');
@@ -1008,7 +1038,7 @@ class LmsApiClient {
     }
 
     // 3. Fallback: Parse HTML of course page directly in background isolate
-    final units = await Isolate.run(() => _parseCourseUnitsFromHtml(html, courseId, url));
+    final units = await _parseCourseUnitsFromHtmlInIsolate(html, courseId, url);
 
     if (units.isNotEmpty) {
       await cacheService.putJson(cacheKey, units.map((u) => u.toJson()).toList(),
@@ -1231,7 +1261,7 @@ class LmsApiClient {
     } else {
       final html = utf8.decode(bytes, allowMalformed: true);
       _checkSessionExpiry(html);
-      content = await Isolate.run(() => LmsContentParser.parseHtml(html, url: resolvedUrl));
+      content = await _parseHtmlContentInIsolate(html, resolvedUrl);
     }
     await cacheService.putJson(cacheKey, content.toJson(),
       accountId: session.uid, expectedGeneration: cacheGeneration);
