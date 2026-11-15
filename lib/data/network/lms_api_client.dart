@@ -795,6 +795,14 @@ class LmsApiClient {
     Map<String, dynamic> state,
     int courseId,
   ) {
+    // Helper: Moodle 5 may serialize numeric fields as strings — parse safely either way.
+    int? toInt(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v.toInt();
+      if (v is String) return int.tryParse(v);
+      return null;
+    }
+
     final sections = (state['section'] as List? ?? []);
     final cms = (state['cm'] as List? ?? []);
 
@@ -807,7 +815,7 @@ class LmsApiClient {
     final secMapById = <int, Map<String, dynamic>>{};
     for (final sec in sections) {
       final sMap = sec as Map<String, dynamic>;
-      final sid = (sMap['id'] as num?)?.toInt();
+      final sid = toInt(sMap['id']);
       if (sid != null) secMapById[sid] = sMap;
     }
 
@@ -819,7 +827,10 @@ class LmsApiClient {
       final activities = <CourseActivity>[];
       for (final cmId in cmList) {
         final cm = cmMap[cmId];
-        if (cm != null && cm['visible'] == true) {
+        // visible may be bool true or string "1" / "true"
+        final isVisible = cm?['visible'];
+        final visible = isVisible == true || isVisible == 1 || isVisible == '1' || isVisible == 'true';
+        if (cm != null && visible) {
           final module = (cm['module'] as String? ?? 'resource').toLowerCase();
           String iconType = 'file';
           String typeName = cm['modname'] as String? ?? 'Resource';
@@ -859,7 +870,7 @@ class LmsApiClient {
         }
       }
 
-      final secNum = (secMap['number'] as num?)?.toInt() ?? 0;
+      final secNum = toInt(secMap['number']) ?? 0;
       final title = (secMap['title'] as String?)?.trim() ?? 'Section $secNum';
       var sectionUrl = (secMap['sectionurl'] as String?)?.isNotEmpty == true
           ? secMap['sectionurl'] as String
@@ -869,10 +880,10 @@ class LmsApiClient {
       }
 
       // Inherit category/parent from parent section if this is a Moodle 5.x mod_subsection
-      final parentId = (secMap['parentsectionid'] as num?)?.toInt();
+      final parentId = toInt(secMap['parentsectionid']);
       final parentSec = parentId != null ? secMapById[parentId] : null;
       final parentTitle = (parentSec?['title'] as String?)?.trim();
-      final parentNum = (parentSec?['number'] as num?)?.toInt() ?? secNum;
+      final parentNum = toInt(parentSec?['number']) ?? secNum;
 
       var category = CourseUnit.resolveCategory(title, secNum);
       var parentUnit = CourseUnit.resolveParentUnit(title, secNum);

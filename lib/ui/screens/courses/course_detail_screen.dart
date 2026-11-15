@@ -186,27 +186,30 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, idx) {
                     final item = folderContent.items[idx];
-                    return ListTile(
-                      leading: _getFileIcon(item.fileType),
-                      title: Text(item.name, style: const TextStyle(fontSize: 14),),
-                      subtitle: Text(
-                        '${item.fileType.toUpperCase()} File',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey,),
-                      ),
-                      trailing: const Icon(Icons.chevron_right_rounded, size: 20,),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PdfViewerScreen(
-                              title: item.name,
-                              url: item.viewerUrl,
-                              downloadUrl: item.downloadUrl,
+                    return Material(
+                      type: MaterialType.transparency,
+                      child: ListTile(
+                        leading: _getFileIcon(item.fileType),
+                        title: Text(item.name, style: const TextStyle(fontSize: 14),),
+                        subtitle: Text(
+                          '${item.fileType.toUpperCase()} File',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey,),
+                        ),
+                        trailing: const Icon(Icons.chevron_right_rounded, size: 20,),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PdfViewerScreen(
+                                title: item.name,
+                                url: item.viewerUrl,
+                                downloadUrl: item.downloadUrl,
+                              ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     );
                   },
                 ),
@@ -886,7 +889,10 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
                                         children: unit.activities.isEmpty
                                             ? [_buildEmptySection(unit, isDark)]
                                             : unit.activities.map((act) {
-                                                return _buildActivityTile(act, isDark,);
+                                                return Material(
+                                                  type: MaterialType.transparency,
+                                                  child: _buildActivityTile(act, isDark),
+                                                );
                                               }).toList(),
                                       ),
                                     );
