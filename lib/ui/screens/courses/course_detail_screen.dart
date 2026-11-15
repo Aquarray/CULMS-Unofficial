@@ -264,6 +264,21 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
     );
   }
 
+  void _openSectionInLms(CourseUnit unit) {
+    var url = unit.sectionUrl;
+    if (url == null || url.isEmpty) {
+      url = '${widget.course.viewurl}&section=${unit.sectionNumber}#tabs-tree-start';
+    } else if (url.contains('course/view.php') && !url.contains('#')) {
+      url = '$url#tabs-tree-start';
+    }
+    AppBrowserScreen.open(
+      context,
+      url: url,
+      title: unit.title,
+      courseName: widget.course.cleanTitle,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -853,13 +868,7 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
                                               IconButton(
                                                 icon: const Icon(Icons.language_rounded, size: 18,),
                                                 tooltip: 'Open Section in LMS',
-                                                onPressed: () {
-                                                  AppBrowserScreen.open(
-                                                    context,
-                                                    url: unit.sectionUrl!,
-                                                    title: unit.title,
-                                                  );
-                                                },
+                                                onPressed: () => _openSectionInLms(unit),
                                               ),
                                           ],
                                         ),
@@ -942,13 +951,7 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4,),
                 minimumSize: const Size(0, 30),
               ),
-              onPressed: () {
-                AppBrowserScreen.open(
-                  context,
-                  url: unit.sectionUrl!,
-                  title: unit.title,
-                );
-              },
+              onPressed: () => _openSectionInLms(unit),
             ),
           ],
         ],

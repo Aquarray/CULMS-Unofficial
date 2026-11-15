@@ -74,11 +74,20 @@ class _HtmlReadingViewState extends ConsumerState<HtmlReadingView> {
       final theme = ReadingThemeConfig.getTheme(settings.readerContrast);
       final session = ref.read(authProvider).session;
       if (session != null) {
-        await WebViewCookieManager().setCookie(
+        final cookieManager = WebViewCookieManager();
+        await cookieManager.setCookie(
           WebViewCookie(
             name: 'MoodleSession',
             value: session.moodleSession,
             domain: 'lms.cuchd.in',
+            path: '/',
+          ),
+        );
+        await cookieManager.setCookie(
+          WebViewCookie(
+            name: 'MoodleSession',
+            value: session.moodleSession,
+            domain: '.cuchd.in',
             path: '/',
           ),
         );
@@ -160,6 +169,7 @@ class _HtmlReadingViewState extends ConsumerState<HtmlReadingView> {
           fontScale: settings.fontScale,
           lineHeight: settings.lineHeight,
           mathJaxScript: math,
+          invertColors: theme.invertContent,
         ),
         baseUrl: widget.sourceUrl,
       );
@@ -233,7 +243,13 @@ class _HtmlReadingViewState extends ConsumerState<HtmlReadingView> {
     ref.listen(settingsProvider, (_, settings) {
       final theme = ReadingThemeConfig.getTheme(settings.readerContrast);
       _controller?.setBackgroundColor(theme.backgroundColor);
+      final isInverted = theme.invertContent;
       _controller?.runJavaScript('''
+        if ($isInverted) {
+          document.documentElement.classList.add('culms-invert');
+        } else {
+          document.documentElement.classList.remove('culms-invert');
+        }
         document.documentElement.style.backgroundColor=${json.encode(_color(theme.backgroundColor))};
         document.documentElement.style.color=${json.encode(_color(theme.textColor))};
         document.body.style.fontSize=${json.encode('${16 * settings.fontScale}px')};
@@ -247,9 +263,9 @@ class _HtmlReadingViewState extends ConsumerState<HtmlReadingView> {
         child: Column(
           children: [
             OutlinedButton.icon(
-              onPressed: () => launchUrl(
-                Uri.parse(widget.sourceUrl),
-                mode: LaunchMode.externalApplication,
+              onPressed: () => AppBrowserScreen.open(
+                context,
+                url: widget.sourceUrl,
               ),
               icon: const Icon(Icons.open_in_browser),
               label: const Text('Open lesson in browser'),

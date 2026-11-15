@@ -846,6 +846,13 @@ class LmsApiClient {
           cmMap[map['id'].toString()] = map;
         }
 
+        final secMapById = <int, Map<String, dynamic>>{};
+        for (final sec in sections) {
+          final sMap = sec as Map<String, dynamic>;
+          final sid = (sMap['id'] as num?)?.toInt();
+          if (sid != null) secMapById[sid] = sMap;
+        }
+
         final units = <CourseUnit>[];
         for (final sec in sections) {
           final secMap = sec as Map<String, dynamic>;
@@ -896,9 +903,29 @@ class LmsApiClient {
 
           final secNum = (secMap['number'] as num?)?.toInt() ?? 0;
           final title = (secMap['title'] as String?)?.trim() ?? 'Section $secNum';
-          final sectionUrl = (secMap['sectionurl'] as String?)?.isNotEmpty == true
+          var sectionUrl = (secMap['sectionurl'] as String?)?.isNotEmpty == true
               ? secMap['sectionurl'] as String
               : '${AppConstants.defaultLmsBaseUrl}/course/view.php?id=$courseId&section=$secNum';
+          if (sectionUrl.contains('course/view.php') && !sectionUrl.contains('#')) {
+            sectionUrl = '$sectionUrl#tabs-tree-start';
+          }
+
+          // Inherit category/parent from parent section if this is a Moodle 5.x mod_subsection
+          final parentId = (secMap['parentsectionid'] as num?)?.toInt();
+          final parentSec = parentId != null ? secMapById[parentId] : null;
+          final parentTitle = (parentSec?['title'] as String?)?.trim();
+          final parentNum = (parentSec?['number'] as num?)?.toInt() ?? secNum;
+
+          var category = CourseUnit.resolveCategory(title, secNum);
+          var parentUnit = CourseUnit.resolveParentUnit(title, secNum);
+          if (parentTitle != null && parentTitle.isNotEmpty) {
+            if (category == CourseSectionCategory.theory && parentSec != null) {
+              category = CourseUnit.resolveCategory(parentTitle, parentNum);
+            }
+            if (parentUnit == 'Theory Chapters' || parentUnit == 'Practicals & Labs') {
+              parentUnit = CourseUnit.resolveParentUnit(parentTitle, parentNum);
+            }
+          }
 
           units.add(CourseUnit(
             id: secMap['id'].toString(),
@@ -906,8 +933,8 @@ class LmsApiClient {
             summary: secMap['summary'] as String?,
             sectionUrl: sectionUrl,
             sectionNumber: secNum,
-            category: CourseUnit.resolveCategory(title, secNum),
-            parentUnit: CourseUnit.resolveParentUnit(title, secNum),
+            category: category,
+            parentUnit: parentUnit,
             activities: activities,
           ),);
         }
@@ -1001,7 +1028,7 @@ class LmsApiClient {
             id: 'sec_$i',
             title: title.isEmpty ? 'General Information' : title,
             summary: summary,
-            sectionUrl: '$url&section=$i',
+            sectionUrl: '$url&section=$i#tabs-tree-start',
             sectionNumber: i,
             category: CourseUnit.resolveCategory(title, i),
             parentUnit: CourseUnit.resolveParentUnit(title, i),

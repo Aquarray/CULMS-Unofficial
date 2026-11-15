@@ -286,6 +286,38 @@ void main() {
       expect(doc, contains('aspect-ratio:16/9'));
       expect(doc, isNot(contains('cdn.jsdelivr.net')));
     });
+
+    test('document injects inverted black theme styles when invertColors is true', () {
+      final lightDoc = ReadingHtmlService.buildDocument(
+        html: '<p>Hello world</p>',
+        sourceUrl: pageUrl,
+        backgroundColor: '#fff',
+        textColor: '#111',
+        accentColor: '#a22',
+        fontFamily: 'Inter',
+        fontScale: 1.0,
+        lineHeight: 1.5,
+        mathJaxScript: '',
+        invertColors: false,
+      );
+      expect(lightDoc, isNot(contains('class="culms-invert"')));
+
+      final blackDoc = ReadingHtmlService.buildDocument(
+        html: '<p>Hello world</p>',
+        sourceUrl: pageUrl,
+        backgroundColor: '#000',
+        textColor: '#ececec',
+        accentColor: '#f55',
+        fontFamily: 'Inter',
+        fontScale: 1.0,
+        lineHeight: 1.5,
+        mathJaxScript: '',
+        invertColors: true,
+      );
+      expect(blackDoc, contains('class="culms-invert"'));
+      expect(blackDoc, contains('html.culms-invert { background:#000000!important;'));
+      expect(blackDoc, contains('filter:invert(1) hue-rotate(180deg)'));
+    });
   });
 
   group('PDF network responses', () {

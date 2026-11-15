@@ -163,6 +163,14 @@ class _AppBrowserScreenState extends ConsumerState<AppBrowserScreen> {
             path: '/',
           ),
         );
+        await cookieManager.setCookie(
+          WebViewCookie(
+            name: 'MoodleSession',
+            value: session.moodleSession,
+            domain: '.cuchd.in',
+            path: '/',
+          ),
+        );
       } catch (e) {
         debugPrint('[APP_BROWSER] Cookie sync warning: $e');
       }
@@ -170,7 +178,13 @@ class _AppBrowserScreenState extends ConsumerState<AppBrowserScreen> {
 
     final uri = Uri.tryParse(widget.initialUrl);
     if (uri != null) {
-      await controller.loadRequest(uri);
+      final headers = <String, String>{};
+      if (session != null &&
+          session.moodleSession.isNotEmpty &&
+          uri.host.contains('cuchd.in')) {
+        headers['Cookie'] = 'MoodleSession=${session.moodleSession}';
+      }
+      await controller.loadRequest(uri, headers: headers);
     }
   }
 

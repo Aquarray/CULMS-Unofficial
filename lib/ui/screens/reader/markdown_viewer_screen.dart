@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/tts_service.dart';
 import '../../../core/services/reading_html_service.dart';
+import '../browser/app_browser_screen.dart';
 import 'html_reading_view.dart';
 import '../../../core/theme/reading_theme.dart';
 import '../../../data/models/app_settings.dart';
@@ -34,11 +35,22 @@ class _MarkdownViewerScreenState extends ConsumerState<MarkdownViewerScreen> {
   bool _showAudioBar = false;
 
   Future<void> _openInBrowser() async {
-    final uri = Uri.tryParse(widget.sourceUrl ?? '');
-    if (uri == null || !['http', 'https'].contains(uri.scheme)) return;
+    final url = widget.sourceUrl;
+    if (url == null || url.isEmpty) return;
     try {
-      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+      await AppBrowserScreen.open(
+        context,
+        url: url,
+        title: widget.title,
+      );
+      return;
     } catch (_) {}
+    final uri = Uri.tryParse(url);
+    if (uri != null && ['http', 'https'].contains(uri.scheme)) {
+      try {
+        if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+      } catch (_) {}
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Could not open this lesson in your browser.')),

@@ -10,6 +10,7 @@ class ReadingThemeConfig {
   final Color dividerColor;
   final Color codeBackgroundColor;
   final Color cardBackgroundColor;
+  final bool invertContent;
 
   const ReadingThemeConfig({
     required this.backgroundColor,
@@ -19,6 +20,7 @@ class ReadingThemeConfig {
     required this.dividerColor,
     required this.codeBackgroundColor,
     required this.cardBackgroundColor,
+    this.invertContent = false,
   });
 
   static ReadingThemeConfig getTheme(ReaderContrast contrast) {
@@ -62,6 +64,7 @@ class ReadingThemeConfig {
           dividerColor: Color(0xFF1A1A1A),
           codeBackgroundColor: Color(0xFF121212),
           cardBackgroundColor: Color(0xFF0C0C0C),
+          invertContent: true,
         );
       case ReaderContrast.forestMist:
         return const ReadingThemeConfig(
