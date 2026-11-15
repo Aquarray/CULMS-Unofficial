@@ -911,7 +911,7 @@ class LmsApiClient {
     if (!forceRefresh) {
       final cached = await cacheService.getJson<List<dynamic>>(cacheKey,
         accountId: session.uid,);
-      if (cached != null && cached.length > 1) {
+      if (cached != null && cached.isNotEmpty) {
         return cached.map((e) => CourseUnit.fromJson(e as Map<String, dynamic>)).toList();
       }
     }
