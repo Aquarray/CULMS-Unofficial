@@ -791,6 +791,114 @@ class LmsApiClient {
     return LmsCalendarEvent.fromJsonList(rawString);
   }
 
+  List<CourseUnit>? _parseCourseFormatState(
+    Map<String, dynamic> state,
+    int courseId,
+  ) {
+    final sections = (state['section'] as List? ?? []);
+    final cms = (state['cm'] as List? ?? []);
+
+    final cmMap = <String, Map<String, dynamic>>{};
+    for (final item in cms) {
+      final map = item as Map<String, dynamic>;
+      cmMap[map['id'].toString()] = map;
+    }
+
+    final secMapById = <int, Map<String, dynamic>>{};
+    for (final sec in sections) {
+      final sMap = sec as Map<String, dynamic>;
+      final sid = (sMap['id'] as num?)?.toInt();
+      if (sid != null) secMapById[sid] = sMap;
+    }
+
+    final units = <CourseUnit>[];
+    for (final sec in sections) {
+      final secMap = sec as Map<String, dynamic>;
+      final cmList = (secMap['cmlist'] as List? ?? []).map((e) => e.toString()).toList();
+
+      final activities = <CourseActivity>[];
+      for (final cmId in cmList) {
+        final cm = cmMap[cmId];
+        if (cm != null && cm['visible'] == true) {
+          final module = (cm['module'] as String? ?? 'resource').toLowerCase();
+          String iconType = 'file';
+          String typeName = cm['modname'] as String? ?? 'Resource';
+
+          if (module == 'page') {
+            iconType = 'page';
+            typeName = 'Reading Page';
+          } else if (module == 'folder') {
+            iconType = 'folder';
+            typeName = 'Folder';
+          } else if (module == 'quiz') {
+            iconType = 'quiz';
+            typeName = 'Quiz / Test';
+          } else if (module == 'forum') {
+            iconType = 'forum';
+            typeName = 'Announcements';
+          } else if (module == 'assign') {
+            iconType = 'assign';
+            typeName = 'Assignment';
+          } else if (module == 'url') {
+            iconType = 'url';
+            typeName = 'Live Session Link';
+          }
+
+          var actUrl = cm['url'] as String? ?? '';
+          if (actUrl.isEmpty && cm['id'] != null) {
+            actUrl = '${AppConstants.defaultLmsBaseUrl}/mod/$module/view.php?id=${cm['id']}';
+          }
+
+          activities.add(CourseActivity(
+            id: cm['id'].toString(),
+            name: cm['name'] as String? ?? 'Activity',
+            typeName: typeName,
+            url: actUrl,
+            iconType: iconType,
+          ),);
+        }
+      }
+
+      final secNum = (secMap['number'] as num?)?.toInt() ?? 0;
+      final title = (secMap['title'] as String?)?.trim() ?? 'Section $secNum';
+      var sectionUrl = (secMap['sectionurl'] as String?)?.isNotEmpty == true
+          ? secMap['sectionurl'] as String
+          : '${AppConstants.defaultLmsBaseUrl}/course/view.php?id=$courseId&section=$secNum';
+      if (sectionUrl.contains('course/view.php') && !sectionUrl.contains('#')) {
+        sectionUrl = '$sectionUrl#tabs-tree-start';
+      }
+
+      // Inherit category/parent from parent section if this is a Moodle 5.x mod_subsection
+      final parentId = (secMap['parentsectionid'] as num?)?.toInt();
+      final parentSec = parentId != null ? secMapById[parentId] : null;
+      final parentTitle = (parentSec?['title'] as String?)?.trim();
+      final parentNum = (parentSec?['number'] as num?)?.toInt() ?? secNum;
+
+      var category = CourseUnit.resolveCategory(title, secNum);
+      var parentUnit = CourseUnit.resolveParentUnit(title, secNum);
+      if (parentTitle != null && parentTitle.isNotEmpty) {
+        if (category == CourseSectionCategory.theory && parentSec != null) {
+          category = CourseUnit.resolveCategory(parentTitle, parentNum);
+        }
+        if (parentUnit == 'Theory Chapters' || parentUnit == 'Practicals & Labs') {
+          parentUnit = CourseUnit.resolveParentUnit(parentTitle, parentNum);
+        }
+      }
+
+      units.add(CourseUnit(
+        id: secMap['id'].toString(),
+        title: title,
+        summary: secMap['summary'] as String?,
+        sectionUrl: sectionUrl,
+        sectionNumber: secNum,
+        category: category,
+        parentUnit: parentUnit,
+        activities: activities,
+      ),);
+    }
+    return units;
+  }
+
   /// Fetch and parse course units & activities from Moodle course page
   Future<List<CourseUnit>> getCourseUnits(
     int courseId,
@@ -803,154 +911,60 @@ class LmsApiClient {
     if (!forceRefresh) {
       final cached = await cacheService.getJson<List<dynamic>>(cacheKey,
         accountId: session.uid,);
-      if (cached != null) {
+      if (cached != null && cached.length > 1) {
         return cached.map((e) => CourseUnit.fromJson(e as Map<String, dynamic>)).toList();
       }
     }
 
-    // 1. Try modern Moodle Course Format State API (core_courseformat_get_state)
-    try {
-      final stateUrl = '${AppConstants.defaultLmsBaseUrl}/lib/ajax/service.php'
-          '?sesskey=${session.sesskey}&info=core_courseformat_get_state';
+    Future<List<CourseUnit>?> fetchStateWithSesskey(String sesskey) async {
+      try {
+        final stateUrl = '${AppConstants.defaultLmsBaseUrl}/lib/ajax/service.php'
+            '?sesskey=$sesskey&info=core_courseformat_get_state';
 
-      final response = await dio.post<dynamic>(
-        stateUrl,
-        data: [
-          {
-            "index": 0,
-            "methodname": "core_courseformat_get_state",
-            "args": {"courseid": courseId},
-          },
-        ],
-        options: Options(
-          headers: {
-            'Content-Type': 'application/json',
-            'Cookie': 'MoodleSession=${session.moodleSession}',
-            'X-Requested-With': 'XMLHttpRequest',
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36',
-          },
-        ),
-      );
+        final response = await dio.post<dynamic>(
+          stateUrl,
+          data: [
+            {
+              "index": 0,
+              "methodname": "core_courseformat_get_state",
+              "args": {"courseid": courseId},
+            },
+          ],
+          options: Options(
+            headers: {
+              'Content-Type': 'application/json',
+              'Cookie': 'MoodleSession=${session.moodleSession}',
+              'X-Requested-With': 'XMLHttpRequest',
+              'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36',
+            },
+          ),
+        );
 
-      final raw = response.data;
-      final List<dynamic> list = raw is String ? json.decode(raw) as List : raw as List;
+        final raw = response.data;
+        final List<dynamic> list = raw is String ? json.decode(raw) as List : raw as List;
 
-      if (list.isNotEmpty && list[0]['error'] == false && list[0]['data'] != null) {
-        final state = json.decode(list[0]['data'] as String) as Map<String, dynamic>;
-        final sections = (state['section'] as List? ?? []);
-        final cms = (state['cm'] as List? ?? []);
-
-        final cmMap = <String, Map<String, dynamic>>{};
-        for (final item in cms) {
-          final map = item as Map<String, dynamic>;
-          cmMap[map['id'].toString()] = map;
+        if (list.isNotEmpty && list[0]['error'] == false && list[0]['data'] != null) {
+          final state = json.decode(list[0]['data'] as String) as Map<String, dynamic>;
+          return _parseCourseFormatState(state, courseId);
         }
-
-        final secMapById = <int, Map<String, dynamic>>{};
-        for (final sec in sections) {
-          final sMap = sec as Map<String, dynamic>;
-          final sid = (sMap['id'] as num?)?.toInt();
-          if (sid != null) secMapById[sid] = sMap;
-        }
-
-        final units = <CourseUnit>[];
-        for (final sec in sections) {
-          final secMap = sec as Map<String, dynamic>;
-          final cmList = (secMap['cmlist'] as List? ?? []).map((e) => e.toString()).toList();
-
-          final activities = <CourseActivity>[];
-          for (final cmId in cmList) {
-            final cm = cmMap[cmId];
-            if (cm != null && cm['visible'] == true) {
-              final module = (cm['module'] as String? ?? 'resource').toLowerCase();
-              String iconType = 'file';
-              String typeName = cm['modname'] as String? ?? 'Resource';
-
-              if (module == 'page') {
-                iconType = 'page';
-                typeName = 'Reading Page';
-              } else if (module == 'folder') {
-                iconType = 'folder';
-                typeName = 'Folder';
-              } else if (module == 'quiz') {
-                iconType = 'quiz';
-                typeName = 'Quiz / Test';
-              } else if (module == 'forum') {
-                iconType = 'forum';
-                typeName = 'Announcements';
-              } else if (module == 'assign') {
-                iconType = 'assign';
-                typeName = 'Assignment';
-              } else if (module == 'url') {
-                iconType = 'url';
-                typeName = 'Live Session Link';
-              }
-
-              var actUrl = cm['url'] as String? ?? '';
-              if (actUrl.isEmpty && cm['id'] != null) {
-                actUrl = '${AppConstants.defaultLmsBaseUrl}/mod/$module/view.php?id=${cm['id']}';
-              }
-
-              activities.add(CourseActivity(
-                id: cm['id'].toString(),
-                name: cm['name'] as String? ?? 'Activity',
-                typeName: typeName,
-                url: actUrl,
-                iconType: iconType,
-              ),);
-            }
-          }
-
-          final secNum = (secMap['number'] as num?)?.toInt() ?? 0;
-          final title = (secMap['title'] as String?)?.trim() ?? 'Section $secNum';
-          var sectionUrl = (secMap['sectionurl'] as String?)?.isNotEmpty == true
-              ? secMap['sectionurl'] as String
-              : '${AppConstants.defaultLmsBaseUrl}/course/view.php?id=$courseId&section=$secNum';
-          if (sectionUrl.contains('course/view.php') && !sectionUrl.contains('#')) {
-            sectionUrl = '$sectionUrl#tabs-tree-start';
-          }
-
-          // Inherit category/parent from parent section if this is a Moodle 5.x mod_subsection
-          final parentId = (secMap['parentsectionid'] as num?)?.toInt();
-          final parentSec = parentId != null ? secMapById[parentId] : null;
-          final parentTitle = (parentSec?['title'] as String?)?.trim();
-          final parentNum = (parentSec?['number'] as num?)?.toInt() ?? secNum;
-
-          var category = CourseUnit.resolveCategory(title, secNum);
-          var parentUnit = CourseUnit.resolveParentUnit(title, secNum);
-          if (parentTitle != null && parentTitle.isNotEmpty) {
-            if (category == CourseSectionCategory.theory && parentSec != null) {
-              category = CourseUnit.resolveCategory(parentTitle, parentNum);
-            }
-            if (parentUnit == 'Theory Chapters' || parentUnit == 'Practicals & Labs') {
-              parentUnit = CourseUnit.resolveParentUnit(parentTitle, parentNum);
-            }
-          }
-
-          units.add(CourseUnit(
-            id: secMap['id'].toString(),
-            title: title,
-            summary: secMap['summary'] as String?,
-            sectionUrl: sectionUrl,
-            sectionNumber: secNum,
-            category: category,
-            parentUnit: parentUnit,
-            activities: activities,
-          ),);
-        }
-
-        if (units.isNotEmpty) {
-          await cacheService.putJson(cacheKey, units.map((u) => u.toJson()).toList(),
-            accountId: session.uid,
-            expectedGeneration: cacheGeneration,);
-          return units;
-        }
+      } catch (e) {
+        logService?.warning('COURSES', 'fetchStateWithSesskey error: $e');
       }
-    } catch (e) {
-      logService?.warning('COURSES', 'core_courseformat_get_state fallback to HTML: $e',);
+      return null;
     }
 
-    // 2. Fallback: Parse HTML of course page directly
+    // 1. Try modern Moodle Course Format State API with current sesskey
+    if (session.sesskey.isNotEmpty) {
+      final stateUnits = await fetchStateWithSesskey(session.sesskey);
+      if (stateUnits != null && stateUnits.isNotEmpty) {
+        await cacheService.putJson(cacheKey, stateUnits.map((u) => u.toJson()).toList(),
+          accountId: session.uid,
+          expectedGeneration: cacheGeneration,);
+        return stateUnits;
+      }
+    }
+
+    // 2. Fetch HTML of course page directly (used for fresh sesskey extraction & fallback parsing)
     final url = '${AppConstants.defaultLmsBaseUrl}/course/view.php?id=$courseId';
     final response = await dio.get<String>(
       url,
@@ -963,79 +977,142 @@ class LmsApiClient {
     );
 
     final html = response.data ?? '';
+
+    // If sesskey was expired, extract the fresh sesskey from the course HTML and retry State API
+    final freshSesskey = RegExp(r'"sesskey":"([a-zA-Z0-9]+)"').firstMatch(html)?.group(1);
+    if (freshSesskey != null && freshSesskey.isNotEmpty && freshSesskey != session.sesskey) {
+      final freshStateUnits = await fetchStateWithSesskey(freshSesskey);
+      if (freshStateUnits != null && freshStateUnits.isNotEmpty) {
+        await cacheService.putJson(cacheKey, freshStateUnits.map((u) => u.toJson()).toList(),
+          accountId: session.uid,
+          expectedGeneration: cacheGeneration,);
+        return freshStateUnits;
+      }
+    }
+
+    // 3. Fallback: Parse HTML of course page directly
     final doc = html_parser.parse(html);
     final units = <CourseUnit>[];
 
-    // Find all sections
-    final sectionElements = doc.querySelectorAll('li.section, .course-section, .sectionname',);
+    // Check topics dropdown / jumpmenu (OneTopic tabs tree)
+    final jumpOptions = doc.querySelectorAll(
+      'select.jumpmenu option, select.urlselect option, select[name="jump"] option',
+    );
 
-    if (sectionElements.isNotEmpty) {
-      for (int i = 0; i < sectionElements.length; i++) {
-        final sec = sectionElements[i];
-        final title = sec.querySelector('.sectionname, h3, h4')?.text.trim() ?? 'Unit ${i + 1}';
-        final summary = sec.querySelector('.summary, .content-summary')?.text.trim();
+    // Extract activities on the current loaded page (usually section 0 or active section)
+    final activitiesOnPage = <CourseActivity>[];
+    final activityCards = doc.querySelectorAll('.activity-item, li.activity');
+    for (final act in activityCards) {
+      final link = act.querySelector('a.aalink, a.stretched-link, a');
+      final name = act.querySelector('.instancename')?.text.replaceAll(RegExp(r'\s+'), ' ').trim() ??
+          link?.text.trim() ??
+          'Activity';
+      final href = link?.attributes['href'] ?? '';
+      var typeName = act.querySelector('.accesshide')?.text.trim() ?? 'Resource';
 
-        final activities = <CourseActivity>[];
-        final activityCards = sec.querySelectorAll('.activity-item, li.activity',);
-        for (final act in activityCards) {
-          final link = act.querySelector('a.aalink, a.stretched-link, a');
-          final name = act.querySelector('.instancename')?.text.replaceAll(RegExp(r'\s+'), ' ').trim() ??
-              link?.text.trim() ??
-              'Activity';
-          final href = link?.attributes['href'] ?? '';
-          var typeName = act.querySelector('.accesshide')?.text.trim() ?? 'Resource';
+      String iconType = 'file';
+      if (href.contains('mod/resource')) iconType = 'file';
+      if (href.contains('mod/folder')) iconType = 'folder';
+      if (href.contains('mod/page')) iconType = 'page';
+      if (href.contains('mod/quiz')) iconType = 'quiz';
+      if (href.contains('mod/forum')) iconType = 'forum';
+      if (href.contains('mod/assign')) iconType = 'assign';
+      if (href.contains('mod/url')) iconType = 'url';
 
-          String iconType = 'file';
-          if (href.contains('mod/resource')) iconType = 'file';
-          if (href.contains('mod/folder')) {
-            iconType = 'folder';
-            typeName = 'Folder';
-          }
-          if (href.contains('mod/page')) {
-            iconType = 'page';
-            typeName = 'Reading Page';
-          }
-          if (href.contains('mod/quiz')) {
-            iconType = 'quiz';
-            typeName = 'Quiz / Test';
-          }
-          if (href.contains('mod/forum')) {
-            iconType = 'forum';
-            typeName = 'Announcements';
-          }
-          if (href.contains('mod/assign')) {
-            iconType = 'assign';
-            typeName = 'Assignment';
-          }
-          if (href.contains('mod/url')) {
-            iconType = 'url';
-            typeName = 'Live Session Link';
-          }
+      if (href.isNotEmpty) {
+        activitiesOnPage.add(CourseActivity(
+          id: '${courseId}_${activitiesOnPage.length}',
+          name: name,
+          typeName: typeName,
+          url: href,
+          iconType: iconType,
+        ));
+      }
+    }
 
-          if (href.isNotEmpty) {
-            activities.add(CourseActivity(
-              id: '${courseId}_${activities.length}',
-              name: name,
-              typeName: typeName,
-              url: href,
-              iconType: iconType,
-            ),);
-          }
+    if (jumpOptions.isNotEmpty) {
+      for (final opt in jumpOptions) {
+        final val = opt.attributes['value']?.trim() ?? '';
+        final text = opt.text.replaceAll('\u00A0', ' ').trim();
+        if (val.isEmpty || text.isEmpty || text.toLowerCase().startsWith('jump to')) continue;
+
+        final secMatch = RegExp(r'section=(\d+)').firstMatch(val);
+        final secNum = secMatch != null ? int.tryParse(secMatch.group(1)!) ?? 0 : 0;
+        var secUrl = val.startsWith('http') ? val : '${AppConstants.defaultLmsBaseUrl}$val';
+        if (secUrl.contains('course/view.php') && !secUrl.contains('#')) {
+          secUrl = '$secUrl#tabs-tree-start';
         }
 
-        if (activities.isNotEmpty || title.isNotEmpty) {
-          units.add(CourseUnit(
-            id: 'sec_$i',
-            title: title.isEmpty ? 'General Information' : title,
-            summary: summary,
-            sectionUrl: '$url&section=$i#tabs-tree-start',
-            sectionNumber: i,
-            category: CourseUnit.resolveCategory(title, i),
-            parentUnit: CourseUnit.resolveParentUnit(title, i),
-            activities: activities,
-          ),);
+        units.add(CourseUnit(
+          id: '${courseId}_sec_$secNum',
+          title: text,
+          sectionUrl: secUrl,
+          sectionNumber: secNum,
+          category: CourseUnit.resolveCategory(text, secNum),
+          parentUnit: CourseUnit.resolveParentUnit(text, secNum),
+          activities: secNum == 0 ? activitiesOnPage : const [],
+        ));
+      }
+    } else {
+      // Find all sections via classic format elements
+      final sectionElements = doc.querySelectorAll('li.section, .course-section, .sectionname');
+      if (sectionElements.isNotEmpty) {
+        for (int i = 0; i < sectionElements.length; i++) {
+          final sec = sectionElements[i];
+          final title = sec.querySelector('.sectionname, h3, h4')?.text.trim() ?? 'Unit ${i + 1}';
+          final summary = sec.querySelector('.summary, .content-summary')?.text.trim();
+
+          final activities = <CourseActivity>[];
+          final secCards = sec.querySelectorAll('.activity-item, li.activity');
+          for (final act in secCards) {
+            final link = act.querySelector('a.aalink, a.stretched-link, a');
+            final name = act.querySelector('.instancename')?.text.replaceAll(RegExp(r'\s+'), ' ').trim() ??
+                link?.text.trim() ??
+                'Activity';
+            final href = link?.attributes['href'] ?? '';
+            var typeName = act.querySelector('.accesshide')?.text.trim() ?? 'Resource';
+
+            String iconType = 'file';
+            if (href.contains('mod/resource')) iconType = 'file';
+            if (href.contains('mod/folder')) iconType = 'folder';
+            if (href.contains('mod/page')) iconType = 'page';
+            if (href.contains('mod/quiz')) iconType = 'quiz';
+            if (href.contains('mod/forum')) iconType = 'forum';
+            if (href.contains('mod/assign')) iconType = 'assign';
+            if (href.contains('mod/url')) iconType = 'url';
+
+            if (href.isNotEmpty) {
+              activities.add(CourseActivity(
+                id: '${courseId}_${activities.length}',
+                name: name,
+                typeName: typeName,
+                url: href,
+                iconType: iconType,
+              ));
+            }
+          }
+
+          if (activities.isNotEmpty || title.isNotEmpty) {
+            units.add(CourseUnit(
+              id: 'sec_$i',
+              title: title.isEmpty ? 'General Information' : title,
+              summary: summary,
+              sectionUrl: '$url&section=$i#tabs-tree-start',
+              sectionNumber: i,
+              category: CourseUnit.resolveCategory(title, i),
+              parentUnit: CourseUnit.resolveParentUnit(title, i),
+              activities: activities,
+            ));
+          }
         }
       }
+    }
+
+    if (units.isNotEmpty) {
+      await cacheService.putJson(cacheKey, units.map((u) => u.toJson()).toList(),
+        accountId: session.uid,
+        expectedGeneration: cacheGeneration,);
+      return units;
     }
 
     // Fallback: If section parser returned empty, extract all activity items across the page

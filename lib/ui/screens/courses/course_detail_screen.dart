@@ -554,9 +554,15 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
                 // Group sub-units under parent units
                 final groupedUnits = <String, List<CourseUnit>>{};
                 for (final u in filteredUnits) {
+                  // Only skip redundant empty group headers (e.g. an empty "Unit 1" header when "Chapter 1.1", "1.2" exist under it)
                   if (!isAssessmentCourse &&
                       u.isHeaderOnly &&
-                      filteredUnits.any((other) => other.parentUnit == u.parentUnit && other.id != u.id,)) {
+                      (u.title.trim().toLowerCase() == u.parentUnit.trim().toLowerCase() ||
+                       RegExp(r'^unit[\s\-_]*\d+$', caseSensitive: false).hasMatch(u.title.trim())) &&
+                      filteredUnits.any((other) =>
+                          other.parentUnit == u.parentUnit &&
+                          other.id != u.id &&
+                          other.title.trim().toLowerCase() != u.title.trim().toLowerCase())) {
                     continue;
                   }
                   groupedUnits.putIfAbsent(u.parentUnit, () => []).add(u);
