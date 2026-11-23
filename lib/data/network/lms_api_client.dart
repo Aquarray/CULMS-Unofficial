@@ -7,6 +7,7 @@ import 'package:html/parser.dart' as html_parser;
 import '../../core/config/app_constants.dart';
 import '../../core/network/sse_parser.dart';
 import '../../core/services/cache_service.dart';
+import '../../core/services/file_extension_service.dart';
 import '../../core/services/log_service.dart';
 import '../models/assignment.dart';
 import '../models/auth_state.dart';
@@ -1252,9 +1253,11 @@ class LmsApiClient {
         bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46 && bytes[4] == 0x2d;
     final resolvedUrl = response.realUri.toString();
     late final LmsExtractedContent content;
-    if (mime == 'application/pdf' || hasPdfSignature) {
+    final isPdf = mime == 'application/pdf' || hasPdfSignature || FileExtensionService.detect(bytes).isPdf;
+    if (isPdf) {
       content = LmsContentParser.pdf(resolvedUrl);
-      final filename = '${content.pageTitle.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}.pdf';
+      final rawFilename = '${content.pageTitle.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}.pdf';
+      final filename = FileExtensionService.fixExtension(rawFilename, bytes);
       await cacheService.saveFile(filename, bytes,
         sourceUrl: resolvedUrl, accountId: session.uid,
         expectedGeneration: cacheGeneration);

@@ -9,20 +9,26 @@ import 'package:share_plus/share_plus.dart';
 import '../../data/models/app_settings.dart';
 import '../../data/models/course_content.dart';
 import 'cache_service.dart';
+import 'file_extension_service.dart';
+import 'pdf24_service.dart';
 
 typedef ProgressCallback = void Function(int current, int total, String status);
 
 class MaterialExportResult {
   final bool isZip;
+  final bool isMergedPdf;
   final File? zipFile;
+  final File? mergedPdfFile;
   final Directory? folder;
   final int fileCount;
   final String path;
   final List<File> files;
 
   MaterialExportResult({
-    required this.isZip,
+    this.isZip = false,
+    this.isMergedPdf = false,
     this.zipFile,
+    this.mergedPdfFile,
     this.folder,
     required this.fileCount,
     required this.path,
@@ -40,11 +46,16 @@ class _DownloadedFile {
 class ZipExportService {
   final Dio dio;
   final CacheService cacheService;
+  final FileExtensionService fileExtensionService;
+  final Pdf24Service pdf24Service;
 
   ZipExportService({
     required this.dio,
-    required this.cacheService
-  });
+    required this.cacheService,
+    FileExtensionService? fileExtensionService,
+    Pdf24Service? pdf24Service,
+  })  : fileExtensionService = fileExtensionService ?? const FileExtensionService(),
+        pdf24Service = pdf24Service ?? Pdf24Service(fileExtensionService: fileExtensionService);
 
   /// Checks if downloaded bytes are an HTML text response instead of binary content.
   static bool isHtml(List<int> bytes) {
@@ -93,30 +104,7 @@ class ZipExportService {
 
   /// Resolves the proper file extension based on magic bytes and original name.
   static String resolveExtension(List<int> bytes, {required String originalName,}) {
-    if (bytes.length >= 4) {
-      // %PDF
-      if (bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46) {
-        return 'pdf';
-      }
-      // Legacy PPT: \xD0\xCF\x11\xE0
-      if (bytes[0] == 0xD0 && bytes[1] == 0xCF && bytes[2] == 0x11 && bytes[3] == 0xE0) {
-        if (originalName.toLowerCase().endsWith('.doc')) return 'doc';
-        return 'ppt';
-      }
-      // OpenXML: PK\x03\x04
-      if (bytes[0] == 0x50 && bytes[1] == 0x4B && bytes[2] == 0x03 && bytes[3] == 0x04) {
-        if (originalName.toLowerCase().endsWith('.docx')) return 'docx';
-        if (originalName.toLowerCase().endsWith('.xlsx')) return 'xlsx';
-        return 'pptx';
-      }
-    }
-
-    // Fallback to existing extension if available
-    final dotIndex = originalName.lastIndexOf('.');
-    if (dotIndex != -1 && dotIndex < originalName.length - 1) {
-      return originalName.substring(dotIndex + 1).toLowerCase();
-    }
-    return 'bin';
+    return FileExtensionService.resolve(bytes, originalFilename: originalName);
   }
 
   /// Converts HTML page body into clean Markdown text.
@@ -322,11 +310,7 @@ class ZipExportService {
 
     // If the response is ALREADY a valid binary file, return it directly!
     if (!isHtml(initialBytes)) {
-      final ext = resolveExtension(initialBytes, originalName: item.name);
-      String finalName = item.name;
-      if (!finalName.toLowerCase().endsWith('.$ext')) {
-        finalName = '${finalName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '')}.$ext';
-      }
+      final finalName = fileExtensionService.fixFilenameExtension(item.name, initialBytes);
       await cacheService.saveFile(finalName, initialBytes,
         sourceUrl: item.downloadUrl,
         accountId: accountId,
@@ -363,11 +347,7 @@ class ZipExportService {
           final fileResp = await _fetchBytesWithCookie(fileUrl, moodleSession);
           final bytes = fileResp?.data;
           if (bytes != null && !isHtml(bytes)) {
-            final ext = resolveExtension(bytes, originalName: text);
-            String name = text;
-            if (!name.toLowerCase().endsWith('.$ext')) {
-              name = '${name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '')}.$ext';
-            }
+            final name = fileExtensionService.fixFilenameExtension(text, bytes);
             results.add(_DownloadedFile(filename: name, bytes: bytes));
           }
         }
@@ -412,12 +392,8 @@ class ZipExportService {
         // Prefer exact filename from download URL if available
         final urlName = extractFilenameFromUrl(absoluteDirectUrl);
         final officeName = doc.querySelector('.local-officeviewer-filename')?.text.trim();
-        String resolvedName = urlName.isNotEmpty ? urlName : (officeName != null && officeName.isNotEmpty ? officeName : item.name);
-
-        final ext = resolveExtension(directBytes, originalName: resolvedName);
-        if (!resolvedName.toLowerCase().endsWith('.$ext')) {
-          resolvedName = '${resolvedName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '')}.$ext';
-        }
+        final candidateName = urlName.isNotEmpty ? urlName : (officeName != null && officeName.isNotEmpty ? officeName : item.name);
+        final resolvedName = fileExtensionService.fixFilenameExtension(candidateName, directBytes);
 
         await cacheService.saveFile(resolvedName, directBytes,
           sourceUrl: item.downloadUrl,
@@ -446,7 +422,7 @@ class ZipExportService {
         String baseName = officeName != null && officeName.isNotEmpty ? officeName : item.name;
 
         // Change extension to .pdf since this is the converted PDF stream
-        String pdfName = '${baseName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '')}.pdf';
+        final pdfName = fileExtensionService.fixFilenameExtension(baseName, pdfBytes, fallback: 'pdf');
 
         await cacheService.saveFile(pdfName, pdfBytes,
           sourceUrl: item.downloadUrl,
@@ -505,6 +481,47 @@ class ZipExportService {
       throw Exception('Could not extract any binary files (PPT/PDF/DOCX/MD) from this unit.',);
     }
 
+    if (format == MaterialExportFormat.pdf24) {
+      onProgress?.call(total, total, 'Preparing files for PDF24 merge...');
+
+      final uploadItems = pdf24Service.prepareFilesForUpload(
+        allDownloaded.map((df) => (filename: df.filename, bytes: df.bytes)).toList(),
+      );
+
+      if (uploadItems.isEmpty) {
+        throw Exception('No supported document files (PDF, PPTX, DOCX, TXT) found to merge.');
+      }
+
+      final pdfFilename = '${sanitizedCourse}_$sanitizedUnit.pdf';
+      final targetFile = File('${culmsDir.path}/$pdfFilename');
+
+      final mergedFile = await pdf24Service.mergeAndDownload(
+        items: uploadItems,
+        targetFile: targetFile,
+        onProgress: onProgress,
+      );
+
+      onProgress?.call(total, total, 'Merged PDF saved in Downloads/CULMS!');
+
+      if (autoShare) {
+        await SharePlus.instance.share(
+          ShareParams(
+            files: [XFile(mergedFile.path)],
+            subject: '$courseName - $unitName Merged PDF',
+            text: 'Exported merged PDF for $unitName',
+          ),
+        );
+      }
+
+      return MaterialExportResult(
+        isMergedPdf: true,
+        mergedPdfFile: mergedFile,
+        fileCount: uploadItems.length,
+        path: mergedFile.path,
+        files: [mergedFile],
+      );
+    }
+
     if (format == MaterialExportFormat.folder) {
       // Export directly as an uncompressed folder inside Downloads/CULMS/Course_Unit
       onProgress?.call(total, total, 'Saving files into Downloads/CULMS/$sanitizedCourse/$sanitizedUnit...',);
@@ -521,7 +538,8 @@ class ZipExportService {
 
       final savedFiles = <File>[];
       for (final df in allDownloaded) {
-        final safeName = df.filename.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+        final verifiedName = fileExtensionService.fixFilenameExtension(df.filename, df.bytes);
+        final safeName = verifiedName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
         final file = File('${targetFolder.path}/$safeName');
         await file.writeAsBytes(df.bytes);
         savedFiles.add(file);
@@ -552,8 +570,9 @@ class ZipExportService {
 
       final archive = Archive();
       for (final file in allDownloaded) {
+        final verifiedName = fileExtensionService.fixFilenameExtension(file.filename, file.bytes);
         archive.addFile(ArchiveFile(
-          file.filename,
+          verifiedName,
           file.bytes.length,
           file.bytes),);
       }

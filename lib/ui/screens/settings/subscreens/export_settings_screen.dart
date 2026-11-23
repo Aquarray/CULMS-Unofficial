@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../data/models/app_settings.dart';
+import '../../../../providers/app_providers.dart';
 import '../../../../providers/settings_provider.dart';
 import 'ai_prompt_editor_screen.dart';
 
@@ -95,13 +96,18 @@ class ExportSettingsScreen extends ConsumerWidget {
                       segments: const [
                         ButtonSegment(
                           value: MaterialExportFormat.zip,
-                          icon: Icon(Icons.folder_zip_rounded, size: 18),
-                          label: Text('ZIP Archive (.zip)'),
+                          icon: Icon(Icons.folder_zip_rounded, size: 16),
+                          label: Text('ZIP (.zip)', style: TextStyle(fontSize: 12)),
                         ),
                         ButtonSegment(
                           value: MaterialExportFormat.folder,
-                          icon: Icon(Icons.folder_open_rounded, size: 18),
-                          label: Text('Direct Folder'),
+                          icon: Icon(Icons.folder_open_rounded, size: 16),
+                          label: Text('Folder', style: TextStyle(fontSize: 12)),
+                        ),
+                        ButtonSegment(
+                          value: MaterialExportFormat.pdf24,
+                          icon: Icon(Icons.picture_as_pdf_rounded, size: 16),
+                          label: Text('Merged PDF', style: TextStyle(fontSize: 12)),
                         ),
                       ],
                       selected: {settings.exportFormat},
@@ -111,6 +117,86 @@ class ExportSettingsScreen extends ConsumerWidget {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // PDF24 Service Quota & Rate Limit Information Card
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: FutureBuilder<List<dynamic>>(
+                future: Future.wait([
+                  ref.read(pdf24ServiceProvider).getRemainingQuota(),
+                  ref.read(pdf24ServiceProvider).getRecentUploadCount(),
+                  ref.read(pdf24ServiceProvider).getTimeUntilReset(),
+                ]),
+                builder: (context, snapshot) {
+                  final quota = snapshot.data != null ? (snapshot.data![0] as int) : 10;
+                  final used = snapshot.data != null ? (snapshot.data![1] as int) : 0;
+                  final resetDuration = snapshot.data != null ? (snapshot.data![2] as Duration?) : null;
+                  final isDark = Theme.of(context).brightness == Brightness.dark;
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.speed_rounded,
+                            size: 20,
+                            color: quota <= 2 ? Colors.orange : const Color(0xFFE53935),
+                          ),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text(
+                              'PDF24 Quota & Rate Limit',
+                              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: (quota <= 2 ? Colors.orange : Colors.green).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: (quota <= 2 ? Colors.orange : Colors.green).withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Text(
+                              '$quota/10 files remaining',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: quota <= 2 ? Colors.orange : Colors.green,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Uploads for merged PDFs are rate-limited to 10 files per rolling 2-hour window to prevent abusing the external service ($used/10 used).',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.white70 : Colors.black87,
+                        ),
+                      ),
+                      if (resetDuration != null && resetDuration > Duration.zero) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Next quota slot unlocks in ~${resetDuration.inMinutes + 1} minutes.',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontStyle: FontStyle.italic,
+                            color: isDark ? Colors.white54 : Colors.black54,
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
             ),
           ),

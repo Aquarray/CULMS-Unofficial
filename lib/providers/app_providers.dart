@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/alarm_service.dart';
 import '../../core/services/cache_service.dart';
 import '../../core/services/cookie_service.dart';
+import '../../core/services/file_extension_service.dart';
 import '../../core/services/log_service.dart';
 import '../../core/services/notification_service.dart';
+import '../../core/services/pdf24_service.dart';
 import '../../core/services/quiz_ai_service.dart';
 import '../../core/services/zip_export_service.dart';
 import '../../data/network/lms_api_client.dart';
@@ -97,10 +99,26 @@ final lmsApiClientProvider = Provider<LmsApiClient>((ref) {
   );
 });
 
+final fileExtensionServiceProvider = Provider<FileExtensionService>((ref) {
+  return const FileExtensionService();
+});
+
+final pdf24ServiceProvider = Provider<Pdf24Service>((ref) {
+  final fileExtensionService = ref.watch(fileExtensionServiceProvider);
+  return Pdf24Service(fileExtensionService: fileExtensionService);
+});
+
 final zipExportServiceProvider = Provider<ZipExportService>((ref) {
   final dio = ref.watch(dioProvider);
   final cacheService = ref.watch(cacheServiceProvider);
-  return ZipExportService(dio: dio, cacheService: cacheService);
+  final fileExtensionService = ref.watch(fileExtensionServiceProvider);
+  final pdf24Service = ref.watch(pdf24ServiceProvider);
+  return ZipExportService(
+    dio: dio,
+    cacheService: cacheService,
+    fileExtensionService: fileExtensionService,
+    pdf24Service: pdf24Service,
+  );
 });
 
 final quizAiServiceProvider = Provider<QuizAiService>((ref) {

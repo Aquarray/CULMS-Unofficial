@@ -93,9 +93,19 @@ enum QuizAiProvider {
 
 enum MaterialExportFormat {
   zip,
-  folder;
+  folder,
+  pdf24;
 
-  String get label => this == MaterialExportFormat.zip ? 'Packed ZIP Archive (.zip)' : 'Direct Folder';
+  String get label {
+    switch (this) {
+      case MaterialExportFormat.zip:
+        return 'Packed ZIP Archive (.zip)';
+      case MaterialExportFormat.folder:
+        return 'Direct Folder';
+      case MaterialExportFormat.pdf24:
+        return 'Merged PDF (via PDF24)';
+    }
+  }
 }
 
 const String defaultAiStudyPromptTemplate = '''Subject: {%subject_name%} - {%chapter_number%}

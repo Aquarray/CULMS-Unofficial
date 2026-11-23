@@ -87,7 +87,9 @@ class _PdfViewerScreenState extends ConsumerState<PdfViewerScreen> {
       );
 
       if (resp.data != null) {
-        final saved = await cacheService.saveFile(filename, resp.data!,
+        final fileExtService = ref.read(fileExtensionServiceProvider);
+        final validatedFilename = fileExtService.fixFilenameExtension(filename, resp.data!, fallback: 'pdf');
+        final saved = await cacheService.saveFile(validatedFilename, resp.data!,
           sourceUrl: targetUrl,
           accountId: auth.session?.uid,
           expectedGeneration: generation,);

@@ -195,9 +195,11 @@ class _UnitExportSheetState extends ConsumerState<UnitExportSheet> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
-                    _selectedFormat == MaterialExportFormat.zip
-                        ? Icons.folder_zip_rounded
-                        : Icons.folder_open_rounded,
+                    _selectedFormat == MaterialExportFormat.pdf24
+                        ? Icons.picture_as_pdf_rounded
+                        : _selectedFormat == MaterialExportFormat.zip
+                            ? Icons.folder_zip_rounded
+                            : Icons.folder_open_rounded,
                     color: Colors.amber,
                     size: 20,
                   ),
@@ -208,9 +210,11 @@ class _UnitExportSheetState extends ConsumerState<UnitExportSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _selectedFormat == MaterialExportFormat.zip
-                            ? 'Export Materials as ZIP'
-                            : 'Export Materials to Folder',
+                        _selectedFormat == MaterialExportFormat.pdf24
+                            ? 'Merge Materials with PDF24'
+                            : _selectedFormat == MaterialExportFormat.zip
+                                ? 'Export Materials as ZIP'
+                                : 'Export Materials to Folder',
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold,),
                       ),
                       Text(
@@ -266,7 +270,7 @@ class _UnitExportSheetState extends ConsumerState<UnitExportSheet> {
               const SizedBox(height: 10),
             ],
 
-            // Format Toggle: ZIP Archive vs Direct Folder
+            // Format Toggle: ZIP Archive vs Direct Folder vs PDF24 Merged PDF
             if (!_isExporting && _exportResult == null) ...[
               Row(
                 children: [
@@ -275,13 +279,18 @@ class _UnitExportSheetState extends ConsumerState<UnitExportSheet> {
                       segments: const [
                         ButtonSegment(
                           value: MaterialExportFormat.zip,
-                          icon: Icon(Icons.folder_zip_rounded, size: 15),
-                          label: Text('ZIP (.zip)', style: TextStyle(fontSize: 11),),
+                          icon: Icon(Icons.folder_zip_rounded, size: 14),
+                          label: Text('ZIP', style: TextStyle(fontSize: 11),),
                         ),
                         ButtonSegment(
                           value: MaterialExportFormat.folder,
-                          icon: Icon(Icons.folder_open_rounded, size: 15),
+                          icon: Icon(Icons.folder_open_rounded, size: 14),
                           label: Text('Folder', style: TextStyle(fontSize: 11)),
+                        ),
+                        ButtonSegment(
+                          value: MaterialExportFormat.pdf24,
+                          icon: Icon(Icons.picture_as_pdf_rounded, size: 14),
+                          label: Text('Merged PDF', style: TextStyle(fontSize: 11)),
                         ),
                       ],
                       selected: {_selectedFormat},
@@ -295,6 +304,31 @@ class _UnitExportSheetState extends ConsumerState<UnitExportSheet> {
                   ),
                 ],
               ),
+              if (_selectedFormat == MaterialExportFormat.pdf24) ...[
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        size: 13,
+                        color: isDark ? Colors.white60 : Colors.black45,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'A rate limit applies to PDF24 merges (10 files per 2 hours). See Settings for live quota.',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.white60 : Colors.black54,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
             ],
 
@@ -373,9 +407,11 @@ class _UnitExportSheetState extends ConsumerState<UnitExportSheet> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _exportResult!.isZip
-                                ? 'Saved in Downloads/CULMS'
-                                : 'Folder created in Downloads/CULMS',
+                            _exportResult!.isMergedPdf
+                                ? 'Merged PDF saved in Downloads/CULMS'
+                                : _exportResult!.isZip
+                                    ? 'Saved in Downloads/CULMS'
+                                    : 'Folder created in Downloads/CULMS',
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
@@ -383,9 +419,11 @@ class _UnitExportSheetState extends ConsumerState<UnitExportSheet> {
                             ),
                           ),
                           Text(
-                            _exportResult!.isZip
-                                ? _exportResult!.zipFile!.path.split('/').last
-                                : 'CULMS/${_exportResult!.path.split('/CULMS/').last}',
+                            _exportResult!.isMergedPdf
+                                ? _exportResult!.mergedPdfFile!.path.split('/').last
+                                : _exportResult!.isZip
+                                    ? _exportResult!.zipFile!.path.split('/').last
+                                    : 'CULMS/${_exportResult!.path.split('/CULMS/').last}',
                             style: const TextStyle(fontSize: 11),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -445,15 +483,19 @@ class _UnitExportSheetState extends ConsumerState<UnitExportSheet> {
                         ),
                       )
                     : Icon(
-                        _selectedFormat == MaterialExportFormat.zip
-                            ? Icons.download_rounded
-                            : Icons.drive_folder_upload_rounded,
+                        _selectedFormat == MaterialExportFormat.pdf24
+                            ? Icons.picture_as_pdf_rounded
+                            : _selectedFormat == MaterialExportFormat.zip
+                                ? Icons.download_rounded
+                                : Icons.drive_folder_upload_rounded,
                         size: 18,
                       ),
                 label: Text(
                   _isExporting
                       ? 'Exporting... ($_current/$_total)'
-                      : 'Export (${activeItems.length} files)',
+                      : _selectedFormat == MaterialExportFormat.pdf24
+                          ? 'Merge & Export (${activeItems.length} files)'
+                          : 'Export (${activeItems.length} files)',
                 ),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 12),

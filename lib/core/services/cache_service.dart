@@ -5,6 +5,8 @@ import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'file_extension_service.dart';
+
 class CacheItem<T> {
   final T data;
   final DateTime timestamp;
@@ -182,7 +184,8 @@ class CacheService {
       );
       if (await fileDir.exists()) await fileDir.delete(recursive: true);
       await fileDir.create(recursive: true);
-      final safeName = filename.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
+      final resolvedFilename = FileExtensionService.fixExtension(filename, bytes);
+      final safeName = resolvedFilename.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
       final file = File(
         '${fileDir.path}/${safeName.isEmpty ? 'document' : safeName}',
       );
@@ -201,7 +204,8 @@ class CacheService {
     List<int> bytes,
   ) async {
     final temp = await dir.createTemp('lms_document_');
-    final safeName = filename.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
+    final resolvedFilename = FileExtensionService.fixExtension(filename, bytes);
+    final safeName = resolvedFilename.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
     return File('${temp.path}/${safeName.isEmpty ? 'document' : safeName}')
         .writeAsBytes(bytes);
   }
