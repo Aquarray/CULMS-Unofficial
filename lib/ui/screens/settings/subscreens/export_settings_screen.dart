@@ -5,11 +5,114 @@ import '../../../../providers/app_providers.dart';
 import '../../../../providers/settings_provider.dart';
 import 'ai_prompt_editor_screen.dart';
 
-class ExportSettingsScreen extends ConsumerWidget {
+class ExportSettingsScreen extends ConsumerStatefulWidget {
   const ExportSettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ExportSettingsScreen> createState() => _ExportSettingsScreenState();
+}
+
+class _ExportSettingsScreenState extends ConsumerState<ExportSettingsScreen> {
+  Future<void> _showUnlockPasswordDialog(BuildContext context) async {
+    final passwordController = TextEditingController();
+    String? errorMessage;
+    final messenger = ScaffoldMessenger.of(context);
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.key_rounded, size: 22, color: Color(0xFF8B5CF6)),
+                  SizedBox(width: 8),
+                  Text('Unlock Unlimited Mode', style: TextStyle(fontSize: 16)),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Enter master password to set PDF24 rate limits to infinity (∞):',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: passwordController,
+                    obscureText: true,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: 'Master Password',
+                      border: const OutlineInputBorder(),
+                      errorText: errorMessage,
+                      prefixIcon: const Icon(Icons.password_rounded, size: 20),
+                    ),
+                    onSubmitted: (_) async {
+                      final entered = passwordController.text;
+                      final pdf24 = ref.read(pdf24ServiceProvider);
+                      final success = await pdf24.unlockUnlimitedWithPassword(entered);
+                      if (success) {
+                        if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                        if (mounted) {
+                          setState(() {});
+                          messenger.showSnackBar(
+                            const SnackBar(
+                              content: Text('Unlimited PDF24 mode unlocked (∞)!'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                      } else {
+                        setDialogState(() {
+                          errorMessage = 'Incorrect password. Access denied.';
+                        });
+                      }
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    final entered = passwordController.text;
+                    final pdf24 = ref.read(pdf24ServiceProvider);
+                    final success = await pdf24.unlockUnlimitedWithPassword(entered);
+                    if (success) {
+                      if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                      if (mounted) {
+                        setState(() {});
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content: Text('Unlimited PDF24 mode unlocked (∞)!'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    } else {
+                      setDialogState(() {
+                        errorMessage = 'Incorrect password. Access denied.';
+                      });
+                    }
+                  },
+                  child: const Text('Unlock'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     final settingsNotifier = ref.read(settingsProvider.notifier);
 
@@ -129,13 +232,15 @@ class ExportSettingsScreen extends ConsumerWidget {
               child: FutureBuilder<List<dynamic>>(
                 future: Future.wait([
                   ref.read(pdf24ServiceProvider).getRemainingQuota(),
-                  ref.read(pdf24ServiceProvider).getRecentUploadCount(),
+                  ref.read(pdf24ServiceProvider).getRecentMergeCount(),
                   ref.read(pdf24ServiceProvider).getTimeUntilReset(),
+                  ref.read(pdf24ServiceProvider).isUnlimitedMode(),
                 ]),
                 builder: (context, snapshot) {
                   final quota = snapshot.data != null ? (snapshot.data![0] as int) : 10;
                   final used = snapshot.data != null ? (snapshot.data![1] as int) : 0;
                   final resetDuration = snapshot.data != null ? (snapshot.data![2] as Duration?) : null;
+                  final isUnlimited = snapshot.data != null && (snapshot.data![3] as bool);
                   final isDark = Theme.of(context).brightness == Brightness.dark;
 
                   return Column(
@@ -144,9 +249,11 @@ class ExportSettingsScreen extends ConsumerWidget {
                       Row(
                         children: [
                           Icon(
-                            Icons.speed_rounded,
+                            isUnlimited ? Icons.all_inclusive_rounded : Icons.speed_rounded,
                             size: 20,
-                            color: quota <= 2 ? Colors.orange : const Color(0xFFE53935),
+                            color: isUnlimited
+                                ? Colors.green
+                                : (quota <= 2 ? Colors.orange : const Color(0xFFE53935)),
                           ),
                           const SizedBox(width: 8),
                           const Expanded(
@@ -158,18 +265,20 @@ class ExportSettingsScreen extends ConsumerWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: (quota <= 2 ? Colors.orange : Colors.green).withValues(alpha: 0.12),
+                              color: (isUnlimited || quota > 2 ? Colors.green : Colors.orange)
+                                  .withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: (quota <= 2 ? Colors.orange : Colors.green).withValues(alpha: 0.3),
+                                color: (isUnlimited || quota > 2 ? Colors.green : Colors.orange)
+                                    .withValues(alpha: 0.3),
                               ),
                             ),
                             child: Text(
-                              '$quota/10 files remaining',
+                              isUnlimited ? 'Unlimited (∞)' : '$quota/10 merges left',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
-                                color: quota <= 2 ? Colors.orange : Colors.green,
+                                color: isUnlimited || quota > 2 ? Colors.green : Colors.orange,
                               ),
                             ),
                           ),
@@ -177,13 +286,15 @@ class ExportSettingsScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        'Uploads for merged PDFs are rate-limited to 10 files per rolling 2-hour window to prevent abusing the external service ($used/10 used).',
+                        isUnlimited
+                            ? 'Unlimited mode is active (∞). Rate limits are completely bypassed for PDF24 merges.'
+                            : 'PDF24 merges are rate-limited to 10 operations per rolling 2-hour window ($used/10 used).',
                         style: TextStyle(
                           fontSize: 12,
                           color: isDark ? Colors.white70 : Colors.black87,
                         ),
                       ),
-                      if (resetDuration != null && resetDuration > Duration.zero) ...[
+                      if (!isUnlimited && resetDuration != null && resetDuration > Duration.zero) ...[
                         const SizedBox(height: 6),
                         Text(
                           'Next quota slot unlocks in ~${resetDuration.inMinutes + 1} minutes.',
@@ -194,6 +305,34 @@ class ExportSettingsScreen extends ConsumerWidget {
                           ),
                         ),
                       ],
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          if (isUnlimited)
+                            OutlinedButton.icon(
+                              icon: const Icon(Icons.lock_outline_rounded, size: 16),
+                              label: const Text('Re-enable Rate Limit', style: TextStyle(fontSize: 12)),
+                              onPressed: () async {
+                                final messenger = ScaffoldMessenger.of(context);
+                                await ref.read(pdf24ServiceProvider).setUnlimitedMode(false);
+                                if (mounted) {
+                                  setState(() {});
+                                  messenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Rate limit re-enabled (10 merges / 2 hrs).'),
+                                    ),
+                                  );
+                                }
+                              },
+                            )
+                          else
+                            OutlinedButton.icon(
+                              icon: const Icon(Icons.key_rounded, size: 16),
+                              label: const Text('Unlock Unlimited (∞)', style: TextStyle(fontSize: 12)),
+                              onPressed: () => _showUnlockPasswordDialog(context),
+                            ),
+                        ],
+                      ),
                     ],
                   );
                 },

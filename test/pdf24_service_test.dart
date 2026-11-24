@@ -9,7 +9,7 @@ import 'package:cuims_unofficial2/core/services/pdf24_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('Pdf24Service Rate Limiter Tests', () {
+  group('Pdf24Service Rate Limiter & Unlimited Mode Tests', () {
     late SharedPreferences prefs;
     late Pdf24Service service;
 
@@ -19,34 +19,35 @@ void main() {
       service = Pdf24Service(prefs: prefs);
     });
 
-    test('Initial quota is 10 with 0 used', () async {
-      expect(await service.getRecentUploadCount(), 0);
+    test('Initial quota is 10 merges with 0 used', () async {
+      expect(await service.getRecentMergeCount(), 0);
       expect(await service.getRemainingQuota(), 10);
       expect(await service.getTimeUntilReset(), null);
+      expect(await service.isUnlimitedMode(), false);
     });
 
-    test('Recording uploads decreases remaining quota', () async {
-      await service.recordUploads(4);
-      expect(await service.getRecentUploadCount(), 4);
-      expect(await service.getRemainingQuota(), 6);
+    test('Recording merge transactions decreases remaining quota', () async {
+      await service.recordMergeTransaction();
+      expect(await service.getRecentMergeCount(), 1);
+      expect(await service.getRemainingQuota(), 9);
 
-      await service.recordUploads(3);
-      expect(await service.getRecentUploadCount(), 7);
-      expect(await service.getRemainingQuota(), 3);
+      await service.recordMergeTransaction();
+      await service.recordMergeTransaction();
+      expect(await service.getRecentMergeCount(), 3);
+      expect(await service.getRemainingQuota(), 7);
     });
 
-    test('Exceeding 10 files per 2 hr throws Pdf24RateLimitException', () async {
-      await service.recordUploads(8);
-      expect(await service.getRemainingQuota(), 2);
+    test('Exceeding 10 merges per 2 hr throws Pdf24RateLimitException', () async {
+      for (var i = 0; i < 10; i++) {
+        await service.recordMergeTransaction();
+      }
+      expect(await service.getRemainingQuota(), 0);
 
-      // Attempting 3 files when 2 remaining should throw
+      // Attempting 1 more merge when 0 remaining should throw
       expect(
-        () => service.checkRateLimit(3),
+        () => service.checkRateLimit(1),
         throwsA(isA<Pdf24RateLimitException>()),
       );
-
-      // Attempting 2 files should succeed
-      await expectLater(service.checkRateLimit(2), completes);
     });
 
     test('Prunes timestamps older than 2 hours', () async {
@@ -54,14 +55,47 @@ void main() {
       final threeHoursAgo = now - const Duration(hours: 3).inMilliseconds;
       final thirtyMinutesAgo = now - const Duration(minutes: 30).inMilliseconds;
 
-      await prefs.setStringList('pdf24_upload_timestamps', [
+      await prefs.setStringList('pdf24_merge_timestamps', [
         threeHoursAgo.toString(),
         thirtyMinutesAgo.toString(),
       ]);
 
       // Three hours ago is pruned, thirty minutes ago is kept
-      expect(await service.getRecentUploadCount(), 1);
+      expect(await service.getRecentMergeCount(), 1);
       expect(await service.getRemainingQuota(), 9);
+    });
+
+    test('unlockUnlimitedWithPassword rejects wrong password', () async {
+      final unlocked = await service.unlockUnlimitedWithPassword('wrong_password');
+      expect(unlocked, false);
+      expect(await service.isUnlimitedMode(), false);
+      expect(await service.getRemainingQuota(), 10);
+    });
+
+    test('unlockUnlimitedWithPassword succeeds with un-break-able@1029 and enables unlimited mode', () async {
+      final unlocked = await service.unlockUnlimitedWithPassword('un-break-able@1029');
+      expect(unlocked, true);
+      expect(await service.isUnlimitedMode(), true);
+      expect(await service.getRemainingQuota(), -1); // -1 signifies infinity (∞)
+
+      // Even with 20 merges recorded, checkRateLimit must NOT throw in unlimited mode
+      for (var i = 0; i < 20; i++) {
+        await service.recordMergeTransaction();
+      }
+      expect(await service.getRecentMergeCount(), 20);
+      await expectLater(service.checkRateLimit(1), completes);
+
+      // Time until reset is null in unlimited mode
+      expect(await service.getTimeUntilReset(), null);
+    });
+
+    test('setUnlimitedMode(false) restores standard rate limiting', () async {
+      await service.unlockUnlimitedWithPassword('un-break-able@1029');
+      expect(await service.isUnlimitedMode(), true);
+
+      await service.setUnlimitedMode(false);
+      expect(await service.isUnlimitedMode(), false);
+      expect(await service.getRemainingQuota(), 10);
     });
   });
 
@@ -132,7 +166,7 @@ void main() {
   });
 
   group('Pdf24Service End-to-End Pipeline with Mock Dio', () {
-    test('mergeAndDownload completes full workflow', () async {
+    test('mergeAndDownload completes full workflow and records 1 transaction', () async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
 
@@ -218,6 +252,10 @@ void main() {
           name: 'test.pdf',
           bytes: utf8.encode('%PDF-1.4\n...'),
         ),
+        Pdf24UploadItem(
+          name: 'test2.pdf',
+          bytes: utf8.encode('%PDF-1.4\n...'),
+        ),
       ];
 
       final result = await service.mergeAndDownload(
@@ -229,8 +267,9 @@ void main() {
       final resultBytes = await result.readAsBytes();
       expect(resultBytes.take(4).toList(), [0x25, 0x50, 0x44, 0x46]); // %PDF
 
-      // Verified that 1 upload was recorded
-      expect(await service.getRecentUploadCount(), 1);
+      // Verified that 1 merge transaction was recorded (not 2 files)
+      expect(await service.getRecentMergeCount(), 1);
+      expect(await service.getRemainingQuota(), 9);
 
       await tempDir.delete(recursive: true);
     });

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:archive/archive.dart';
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'file_extension_service.dart';
@@ -17,7 +18,7 @@ class Pdf24Exception implements Exception {
   String toString() => details != null ? 'Pdf24Exception: $message ($details)' : 'Pdf24Exception: $message';
 }
 
-/// Specific exception when the user exceeds the rate limit (10 files per 2 hours).
+/// Specific exception when the user exceeds the rate limit (10 merge transactions per 2 hours).
 class Pdf24RateLimitException extends Pdf24Exception {
   final int used;
   final int remaining;
@@ -30,8 +31,8 @@ class Pdf24RateLimitException extends Pdf24Exception {
     required this.attempted,
     this.timeUntilReset,
   }) : super(
-          'PDF24 rate limit reached: Maximum 10 files per 2 hours allowed to avoid service abuse. '
-          '($used/10 used, $remaining remaining). Attempted to upload $attempted files.'
+          'PDF24 rate limit reached: Maximum 10 merged PDFs per 2 hours allowed to avoid service abuse. '
+          '($used/10 merges used, $remaining remaining).'
           '${timeUntilReset != null ? " Next slot available in ${timeUntilReset.inMinutes + 1} minutes." : ""}',
         );
 }
@@ -69,14 +70,20 @@ class Pdf24Service {
   final Dio _dio;
   final FileExtensionService _fileExtensionService;
   final String host;
-  final SharedPreferences? _prefs;
+  final SharedPreferences? prefs;
 
   static const String defaultHost = 'filetools1.pdf24.org';
   static const String origin = 'https://tools.pdf24.org';
   static const String referer = 'https://tools.pdf24.org/';
-  static const String _rateLimitPrefsKey = 'pdf24_upload_timestamps';
-  static const int maxUploadsPerWindow = 10;
+  static const String _rateLimitPrefsKey = 'pdf24_merge_timestamps';
+  static const String _unlimitedPrefsKey = 'pdf24_unlimited_mode';
+  static const int maxMergesPerWindow = 10;
   static const Duration rateLimitWindow = Duration(hours: 2);
+
+  /// SHA-256 hash of the master password to unlock unlimited PDF24 operations.
+  /// Plaintext password is NEVER stored in the application.
+  static const String unlimitedPasswordHash =
+      'd9e4d45c3feb29fff852cd9fd21b61777d22fb326eaa90a868edd4fd82ca9edf';
 
   String _sid;
 
@@ -85,7 +92,7 @@ class Pdf24Service {
     FileExtensionService? fileExtensionService,
     String? host,
     String? initialSid,
-    SharedPreferences? prefs,
+    this.prefs,
   })  : _dio = dio ??
             Dio(
               BaseOptions(
@@ -100,8 +107,7 @@ class Pdf24Service {
             ),
         _fileExtensionService = fileExtensionService ?? const FileExtensionService(),
         host = host ?? defaultHost,
-        _sid = initialSid ?? _generateSid(),
-        _prefs = prefs;
+        _sid = initialSid ?? _generateSid();
 
   String get activeSid => _sid;
 
@@ -123,14 +129,39 @@ class Pdf24Service {
     }
   }
 
-  // --- Rate Limiting (10 files per 2 hours) ---
+  // --- Rate Limiting & Unlimited Mode ---
 
   Future<SharedPreferences> _getPrefs() async {
-    return _prefs ?? await SharedPreferences.getInstance();
+    return prefs ?? await SharedPreferences.getInstance();
   }
 
-  /// Returns recent upload timestamps within the rolling 2-hour window, pruning older ones.
-  Future<List<int>> getRecentUploadTimestamps() async {
+  /// Whether unlimited PDF24 operations are currently enabled.
+  Future<bool> isUnlimitedMode() async {
+    final prefs = await _getPrefs();
+    return prefs.getBool(_unlimitedPrefsKey) ?? false;
+  }
+
+  /// Attempts to unlock unlimited PDF24 merges with a password.
+  /// Compares the SHA-256 hash of the trimmed input against the stored constant.
+  Future<bool> unlockUnlimitedWithPassword(String password) async {
+    final bytes = utf8.encode(password.trim());
+    final digest = sha256.convert(bytes).toString();
+    if (digest == unlimitedPasswordHash) {
+      final prefs = await _getPrefs();
+      await prefs.setBool(_unlimitedPrefsKey, true);
+      return true;
+    }
+    return false;
+  }
+
+  /// Sets whether unlimited mode is enabled or disabled.
+  Future<void> setUnlimitedMode(bool enabled) async {
+    final prefs = await _getPrefs();
+    await prefs.setBool(_unlimitedPrefsKey, enabled);
+  }
+
+  /// Returns recent merge timestamps within the rolling 2-hour window, pruning older ones.
+  Future<List<int>> getRecentMergeTimestamps() async {
     final prefs = await _getPrefs();
     final raw = prefs.getStringList(_rateLimitPrefsKey) ?? [];
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -153,21 +184,24 @@ class Pdf24Service {
     return valid;
   }
 
-  /// Returns how many files have been uploaded in the current 2-hour window.
-  Future<int> getRecentUploadCount() async {
-    final timestamps = await getRecentUploadTimestamps();
+  /// Returns how many merge transactions have occurred in the current 2-hour window.
+  Future<int> getRecentMergeCount() async {
+    final timestamps = await getRecentMergeTimestamps();
     return timestamps.length;
   }
 
-  /// Returns the number of files the user can still upload in the current window.
+  /// Returns the remaining merges available in the 2-hour window.
+  /// Returns -1 when unlimited mode is enabled (representing infinity).
   Future<int> getRemainingQuota() async {
-    final used = await getRecentUploadCount();
-    return max(0, maxUploadsPerWindow - used);
+    if (await isUnlimitedMode()) return -1;
+    final used = await getRecentMergeCount();
+    return max(0, maxMergesPerWindow - used);
   }
 
-  /// If quota is exhausted or exceeded, returns the Duration until the earliest upload expires.
+  /// If quota is exhausted, returns the Duration until the earliest merge expires.
   Future<Duration?> getTimeUntilReset() async {
-    final timestamps = await getRecentUploadTimestamps();
+    if (await isUnlimitedMode()) return null;
+    final timestamps = await getRecentMergeTimestamps();
     if (timestamps.isEmpty) return null;
     timestamps.sort();
     final oldest = timestamps.first;
@@ -176,36 +210,39 @@ class Pdf24Service {
     return diff > 0 ? Duration(milliseconds: diff) : Duration.zero;
   }
 
-  /// Checks if [count] files can be uploaded without exceeding the 10 files / 2 hr limit.
-  /// Throws [Pdf24RateLimitException] if limit is exceeded.
-  Future<void> checkRateLimit(int count) async {
-    final used = await getRecentUploadCount();
-    final remaining = max(0, maxUploadsPerWindow - used);
-    if (used + count > maxUploadsPerWindow) {
+  /// Checks if [transactions] merge operations can be performed without exceeding the 10 merges / 2 hr limit.
+  /// Throws [Pdf24RateLimitException] if limit is exceeded and unlimited mode is not active.
+  Future<void> checkRateLimit([int transactions = 1]) async {
+    if (await isUnlimitedMode()) return;
+    final used = await getRecentMergeCount();
+    final remaining = max(0, maxMergesPerWindow - used);
+    if (used + transactions > maxMergesPerWindow) {
       final timeUntilReset = await getTimeUntilReset();
       throw Pdf24RateLimitException(
         used: used,
         remaining: remaining,
-        attempted: count,
+        attempted: transactions,
         timeUntilReset: timeUntilReset,
       );
     }
   }
 
-  /// Records [count] newly uploaded files into the rate limit store.
-  Future<void> recordUploads(int count) async {
-    if (count <= 0) return;
+  /// Records a newly completed merge transaction into the rate limit store.
+  Future<void> recordMergeTransaction() async {
     final prefs = await _getPrefs();
-    final timestamps = await getRecentUploadTimestamps();
-    final now = DateTime.now().millisecondsSinceEpoch;
-    for (var i = 0; i < count; i++) {
-      timestamps.add(now);
-    }
+    final timestamps = await getRecentMergeTimestamps();
+    timestamps.add(DateTime.now().millisecondsSinceEpoch);
     await prefs.setStringList(
       _rateLimitPrefsKey,
       timestamps.map((e) => e.toString()).toList(),
     );
   }
+
+  // --- Compatibility Aliases ---
+
+  Future<List<int>> getRecentUploadTimestamps() => getRecentMergeTimestamps();
+  Future<int> getRecentUploadCount() => getRecentMergeCount();
+  Future<void> recordUploads(int count) => recordMergeTransaction();
 
   // --- Filtering & ZIP Extraction ---
 
@@ -491,11 +528,11 @@ class Pdf24Service {
   }
 
   /// Full end-to-end merge pipeline:
-  /// 1. Checks rate limit against [items.length].
+  /// 1. Checks transaction rate limit (10 merges per 2 hr window, unless unlimited).
   /// 2. Uploads items to PDF24.
-  /// 3. Records uploads toward rate limiter.
-  /// 4. Merges and polls status.
-  /// 5. Downloads and saves the final PDF to [targetFile].
+  /// 3. Merges and polls status.
+  /// 4. Downloads and saves the final PDF to [targetFile].
+  /// 5. Records 1 merge transaction toward rate limiter.
   Future<File> mergeAndDownload({
     required List<Pdf24UploadItem> items,
     required File targetFile,
@@ -505,8 +542,8 @@ class Pdf24Service {
       throw Pdf24Exception('No files provided for PDF24 merge');
     }
 
-    // 1. Enforce 10 files per 2 hr rate limit
-    await checkRateLimit(items.length);
+    // 1. Enforce 10 merges per 2 hr rate limit (bypassed if unlimited mode is enabled)
+    await checkRateLimit(1);
 
     // 2. Upload each file to the pinned worker
     final descriptors = <Map<String, dynamic>>[];
@@ -521,14 +558,11 @@ class Pdf24Service {
       descriptors.add(desc);
     }
 
-    // 3. Record successful uploads against rate limiter
-    await recordUploads(items.length);
-
-    // 4. Trigger merge
+    // 3. Trigger merge
     onProgress?.call(items.length, items.length, 'Starting PDF24 merge job...');
     final jobId = await startMerge(descriptors);
 
-    // 5. Poll for completion
+    // 4. Poll for completion
     final statusPayload = await waitForJob(
       jobId,
       onPoll: (st) {
@@ -538,12 +572,15 @@ class Pdf24Service {
 
     final job = statusPayload['job'] as Map<String, dynamic>;
 
-    // 6. Download the result
+    // 5. Download the result
     onProgress?.call(items.length, items.length, 'Downloading merged PDF...');
     final pdfBytes = await downloadResult(jobId, job);
 
     await targetFile.parent.create(recursive: true);
     await targetFile.writeAsBytes(pdfBytes);
+
+    // 6. Record successful merge transaction
+    await recordMergeTransaction();
 
     return targetFile;
   }

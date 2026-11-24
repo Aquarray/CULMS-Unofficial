@@ -318,7 +318,7 @@ class _UnitExportSheetState extends ConsumerState<UnitExportSheet> {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          'A rate limit applies to PDF24 merges (10 files per 2 hours). See Settings for live quota.',
+                          'A rate limit applies to PDF24 merges (10 merged PDFs per 2 hours). See Settings for live quota & unlock.',
                           style: TextStyle(
                             fontSize: 11,
                             color: isDark ? Colors.white60 : Colors.black54,
